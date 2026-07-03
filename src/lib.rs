@@ -135,8 +135,13 @@ pub struct WGPUQuerySet(pub wgpu::QuerySet);
 
 /// `navigator.gpu.requestAdapter() -> Promise<GPUAdapter | null>` —
 /// requests a default adapter (high-performance, fallback allowed).
-/// v0.1 takes no descriptor; the spec's `powerPreference` /
-/// `forceFallbackAdapter` knobs are deferred to v0.2.
+///
+/// `surface_handle` is a native spec-extra (#5812 item 3): pass a surface
+/// handle to pick an adapter compatible with it, or `0` for none. On
+/// d3d12 / vulkan the adapter must be surface-compatible or a later
+/// `surface.configure` fails; Metal ignores it. The idiomatic native
+/// order is therefore surface-first: wrap the view with
+/// `surfaceFromNativeView`, then `requestAdapter(surface)`.
 ///
 /// Resolves to a numeric adapter handle, or rejects if no adapter is
 /// available. The spec returns `null` when no adapter is found; we
@@ -144,18 +149,36 @@ pub struct WGPUQuerySet(pub wgpu::QuerySet);
 /// paths instead of silently returning `0`. TS-side wrappers can map
 /// this to `null` if literal spec parity matters.
 #[no_mangle]
-pub extern "C" fn js_webgpu_request_adapter() -> *mut Promise {
+pub extern "C" fn js_webgpu_request_adapter(surface_handle: Handle) -> *mut Promise {
     let promise = JsPromise::new();
     let raw = promise.as_raw();
 
     spawn_blocking(move || {
-        let adapter = pollster::block_on(instance().request_adapter(
-            &wgpu::RequestAdapterOptions {
+        // #5812 item 3 — pick the adapter against the target surface when
+        // one is supplied (`surface_handle == 0` means none). On d3d12 /
+        // vulkan the adapter (and the device requested from it) must be
+        // compatible with the surface, or a later `surface.configure`
+        // fails with a "no queue family supports presentation" error;
+        // Metal ignores this. Callers that already hold a surface (the
+        // native pattern: create the view, wrap it, then request the
+        // adapter) pass it here. Holding the surface reference across the
+        // blocking request mirrors `adapterRequestDevice` above.
+        let adapter = if surface_handle == 0 {
+            pollster::block_on(instance().request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
                 force_fallback_adapter: false,
                 compatible_surface: None,
-            },
-        ));
+            }))
+        } else {
+            with_handle::<WGPUSurface, _, _>(surface_handle, |s| {
+                pollster::block_on(instance().request_adapter(&wgpu::RequestAdapterOptions {
+                    power_preference: wgpu::PowerPreference::HighPerformance,
+                    force_fallback_adapter: false,
+                    compatible_surface: Some(&s.surface),
+                }))
+            })
+            .flatten()
+        };
         match adapter {
             Some(a) => {
                 let h = register_handle(WGPUAdapter(a));
@@ -3269,6 +3292,22 @@ pub struct WGPUSurface {
     /// new acquire / a present can free the previous one and per-frame
     /// handles don't accumulate.
     issued_tex: Mutex<Handle>,
+    /// Device handle captured by `surfaceConfigure` (0 = unconfigured),
+    /// so the swapchain can be re-`configure`d without JS involvement
+    /// when the backing window is reparented (see `configured_root`).
+    #[cfg(target_os = "windows")]
+    configured_device: Mutex<Handle>,
+    /// Top-level ancestor (`GetAncestor(GA_ROOT)`) of `view_ptr` when
+    /// `surfaceConfigure` ran. perry-ui creates widget HWNDs under a
+    /// hidden *parking* window and only reparents them into the real
+    /// app window when the body is mounted — typically *after* the
+    /// surface was configured. A DXGI swapchain created while the HWND
+    /// hung under the parking window presents successfully but never
+    /// composites into the on-screen window (#5812 item 5), so
+    /// `getCurrentTexture` compares the current root against this and
+    /// re-configures (rebuilding the swapchain) when it changed.
+    #[cfg(target_os = "windows")]
+    configured_root: Mutex<i64>,
 }
 
 /// The handle `getCurrentTexture` returns. It carries no texture of its
@@ -3369,6 +3408,10 @@ pub unsafe extern "C" fn js_webgpu_request_surface(descriptor_ptr: *const String
             config: Mutex::new(None),
             current: Mutex::new(None),
             issued_tex: Mutex::new(0),
+            #[cfg(target_os = "windows")]
+            configured_device: Mutex::new(0),
+            #[cfg(target_os = "windows")]
+            configured_root: Mutex::new(0),
         }),
         Err(e) => {
             eprintln!("webgpu requestSurface: create_surface failed: {e}");
@@ -3391,6 +3434,8 @@ pub extern "C" fn js_webgpu_surface_from_native_view(view_ptr: i64) -> Handle {
     if view_ptr == 0 {
         return 0;
     }
+    #[cfg(target_os = "windows")]
+    win32::diag("surfaceFromNativeView", view_ptr);
     let Some((window_handle, display_handle)) = surface_view::wrap(view_ptr) else {
         return 0;
     };
@@ -3408,6 +3453,10 @@ pub extern "C" fn js_webgpu_surface_from_native_view(view_ptr: i64) -> Handle {
             config: Mutex::new(None),
             current: Mutex::new(None),
             issued_tex: Mutex::new(0),
+            #[cfg(target_os = "windows")]
+            configured_device: Mutex::new(0),
+            #[cfg(target_os = "windows")]
+            configured_root: Mutex::new(0),
         }),
         Err(e) => {
             eprintln!("webgpu surfaceFromNativeView: create_surface failed: {e}");
@@ -3510,6 +3559,12 @@ pub unsafe extern "C" fn js_webgpu_surface_configure(
         .is_some();
         if applied {
             *s.config.lock() = Some(config.clone());
+            #[cfg(target_os = "windows")]
+            {
+                *s.configured_device.lock() = cfg.device;
+                *s.configured_root.lock() = win32::root_of(s.view_ptr);
+                win32::diag("surfaceConfigure", s.view_ptr);
+            }
         }
     });
 }
@@ -3521,8 +3576,124 @@ pub unsafe extern "C" fn js_webgpu_surface_configure(
 /// surface is unconfigured or the swapchain is lost (reconfigure and
 /// retry, per the spec). Call `surfacePresent` after submitting the
 /// frame's command buffers.
+/// #5812 item 5 — rebind the swapchain after the backing window was
+/// reparented. perry-ui creates widget HWNDs under a hidden *message-only*
+/// parking window (`HWND_MESSAGE`) and moves them into the real app window
+/// when the body mounts — typically AFTER `surfaceConfigure` already built
+/// the swapchain. A DXGI swapchain created while its HWND hung under a
+/// message-only window is outside DWM's composition tree: `Present`
+/// succeeds forever but the content never reaches the screen (the reported
+/// gray window). Re-`configure` alone doesn't help — wgpu's dx12 backend
+/// calls `ResizeBuffers` on the *existing* swapchain, keeping the stale
+/// binding — so on a top-level-ancestor change we recreate the
+/// `wgpu::Surface` itself and configure the fresh one, which goes through
+/// `CreateSwapChainForHwnd` against the HWND's current (visible) ancestry.
+///
+/// Lock discipline: the DashMap write borrow (`with_handle_mut`) never
+/// nests another handle lookup — the device configure runs under the same
+/// read-borrow pattern `surfaceConfigure` already uses.
+#[cfg(target_os = "windows")]
+fn rebind_surface_if_reparented(surface_handle: Handle) {
+    // Debug escape hatch (bisection only): reproduce the pre-fix behavior.
+    if std::env::var_os("PERRY_WEBGPU_NO_REBIND").is_some() {
+        return;
+    }
+    // Cheap read: has the top-level ancestor changed since configure?
+    let needs = with_handle::<WGPUSurface, _, _>(surface_handle, |s| {
+        let root_now = win32::root_of(s.view_ptr);
+        let cfg_root = *s.configured_root.lock();
+        if cfg_root != 0 && root_now != 0 && root_now != cfg_root {
+            Some((s.view_ptr, root_now))
+        } else {
+            None
+        }
+    })
+    .flatten();
+    let Some((view_ptr, root_now)) = needs else {
+        return;
+    };
+    win32::diag("getCurrentTexture: window reparented — rebinding", view_ptr);
+
+    // Build the replacement surface outside any handle borrow.
+    let Some((window_handle, display_handle)) = surface_view::wrap(view_ptr) else {
+        return;
+    };
+    let target = wgpu::SurfaceTargetUnsafe::RawHandle {
+        raw_display_handle: display_handle,
+        raw_window_handle: window_handle,
+    };
+    // SAFETY: `view_ptr` referenced a live view when the surface was
+    // created and the caller keeps it alive for the surface's lifetime
+    // (same contract as `surfaceFromNativeView`).
+    let new_surface = match unsafe { instance().create_surface_unsafe(target) } {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("webgpu surfaceGetCurrentTexture: rebind create_surface failed: {e}");
+            return;
+        }
+    };
+
+    // Swap it in under the write borrow (drops the old surface + its
+    // stale swapchain), then configure under read borrows.
+    let swapped = perry_ffi::with_handle_mut::<WGPUSurface, _, _>(surface_handle, |s| {
+        *s.current.lock() = None; // stale frame from the old swapchain
+        s.surface = new_surface;
+    })
+    .is_some();
+    if !swapped {
+        return;
+    }
+    let _ = with_handle::<WGPUSurface, _, _>(surface_handle, |s| {
+        let device = *s.configured_device.lock();
+        let config = s.config.lock().clone();
+        if let Some(config) = config {
+            let applied = with_handle::<WGPUDevice, _, _>(device, |d| {
+                s.surface.configure(&d.0, &config);
+            })
+            .is_some();
+            if applied {
+                *s.configured_root.lock() = root_now;
+                win32::diag("getCurrentTexture: swapchain recreated", s.view_ptr);
+            } else {
+                eprintln!(
+                    "webgpu surfaceGetCurrentTexture: reparent rebind failed \
+                     (device handle {device} gone?)"
+                );
+            }
+        }
+    });
+}
+
 #[no_mangle]
 pub extern "C" fn js_webgpu_surface_get_current_texture(surface_handle: Handle) -> Handle {
+    // #5812 item 5 (Windows): while the backing HWND is not visible —
+    // parked under perry-ui's hidden parking window before `App()` mounts
+    // the body, or the app window is hidden — report "not presentable
+    // yet" (0) instead of acquiring. Presents against an invisible child
+    // are never consumed by DWM, so after the swapchain queue fills
+    // (buffer count + frame latency ≈ 10 frames) the next acquire blocks
+    // the main thread FOREVER — before `App()` even runs. Returning 0
+    // matches the macOS "view not yet on screen; wait + retry" contract
+    // the render-loop examples already handle, and lets bounded-burst
+    // renderers survive the mount instead of exhausting their frames
+    // into the invisible parking window (the reporter's "15 frames
+    // present fine but the window stays gray").
+    #[cfg(target_os = "windows")]
+    {
+        let visible = with_handle::<WGPUSurface, _, _>(surface_handle, |s| {
+            let v = win32::is_visible(s.view_ptr);
+            if !v {
+                win32::diag("getCurrentTexture: view not visible — not presentable", s.view_ptr);
+            }
+            v
+        })
+        .unwrap_or(false);
+        if !visible {
+            return 0;
+        }
+        rebind_surface_if_reparented(surface_handle);
+    }
+
     let acquired = with_handle::<WGPUSurface, _, _>(surface_handle, |s| {
         match s.surface.get_current_texture() {
             Ok(st) => {
@@ -3562,6 +3733,8 @@ pub extern "C" fn js_webgpu_surface_present(surface_handle: Handle) {
     let _ = with_handle::<WGPUSurface, _, _>(surface_handle, |s| {
         if let Some(st) = s.current.lock().take() {
             st.present();
+            #[cfg(target_os = "windows")]
+            win32::diag("surfacePresent", s.view_ptr);
         }
         let prev = std::mem::replace(&mut *s.issued_tex.lock(), 0);
         if prev != 0 {
@@ -3615,6 +3788,67 @@ pub extern "C" fn js_webgpu_surface_drop(surface_handle: Handle) {
 // is currently implemented for macOS (where wgpu's Metal HAL turns a
 // bare `NSView` into a `CAMetalLayer`-backed swapchain for us); other
 // desktop targets allocate their view through perry-ui and use `wrap`.
+/// Minimal user32 bindings for the reparent-detection fix + `PERRY_WEBGPU_DIAG`
+/// window-state logging (#5812). Raw externs — not worth a `windows` crate
+/// dependency for four calls.
+#[cfg(target_os = "windows")]
+mod win32 {
+    #[repr(C)]
+    pub struct Rect {
+        pub left: i32,
+        pub top: i32,
+        pub right: i32,
+        pub bottom: i32,
+    }
+
+    #[link(name = "user32")]
+    extern "system" {
+        fn GetAncestor(hwnd: isize, ga_flags: u32) -> isize;
+        fn GetParent(hwnd: isize) -> isize;
+        fn IsWindowVisible(hwnd: isize) -> i32;
+        fn GetWindowRect(hwnd: isize, rect: *mut Rect) -> i32;
+    }
+
+    const GA_ROOT: u32 = 2;
+
+    /// Top-level ancestor of `hwnd` (the window DWM composes it under).
+    pub fn root_of(hwnd: i64) -> i64 {
+        unsafe { GetAncestor(hwnd as isize, GA_ROOT) as i64 }
+    }
+
+    /// Whole-chain visibility: false while the window (or any ancestor —
+    /// e.g. perry-ui's hidden parking window) is not shown.
+    pub fn is_visible(hwnd: i64) -> bool {
+        unsafe { IsWindowVisible(hwnd as isize) != 0 }
+    }
+
+    /// One-line window-state dump, gated on `PERRY_WEBGPU_DIAG=1`.
+    pub fn diag(tag: &str, hwnd: i64) {
+        if std::env::var_os("PERRY_WEBGPU_DIAG").is_none() {
+            return;
+        }
+        unsafe {
+            let mut rc = Rect {
+                left: 0,
+                top: 0,
+                right: 0,
+                bottom: 0,
+            };
+            GetWindowRect(hwnd as isize, &mut rc);
+            eprintln!(
+                "[webgpu diag] {tag}: hwnd={hwnd:#x} visible={} parent={:#x} root={:#x} rect=({},{})-({},{})",
+                IsWindowVisible(hwnd as isize),
+                GetParent(hwnd as isize) as i64,
+                root_of(hwnd),
+                rc.left,
+                rc.top,
+                rc.right,
+                rc.bottom,
+            );
+        }
+    }
+}
+
 mod surface_view {
     use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
@@ -3701,6 +3935,10 @@ mod surface_view {
     /// need a display connection) — those need a richer entry point.
     #[allow(unused_variables)]
     pub fn wrap(view_ptr: i64) -> Option<(RawWindowHandle, RawDisplayHandle)> {
+        // Windows wraps an integer HWND (NonZeroIsize) and the fallback
+        // arm wraps nothing — only the pointer-handle platforms need
+        // NonNull, so scope the import to them to stay warning-free.
+        #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
         use std::ptr::NonNull;
         #[cfg(target_os = "macos")]
         {

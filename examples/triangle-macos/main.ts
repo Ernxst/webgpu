@@ -38,11 +38,14 @@ const HEIGHT = 600;
 // Reserve the render-surface view first — perry-ui owns it, we draw into it.
 const view = BloomView(WIDTH, HEIGHT);
 
-const adapter = await requestAdapter();
+// Surface-first order: wrap the view into a swapchain surface, then pick the
+// adapter *against that surface*. Required on d3d12/vulkan (the adapter/device
+// must be presentation-compatible with the surface); harmless on Metal.
+const surface = surfaceFromNativeView(bloomViewGetNativeHandle(view));
+
+const adapter = await requestAdapter(surface);
 const { device, queue } = await adapterRequestDevice(adapter);
 
-// Wrap the view's native handle into a swapchain and configure it.
-const surface = surfaceFromNativeView(bloomViewGetNativeHandle(view));
 const format = surfaceGetPreferredFormat(surface, adapter);
 surfaceConfigure(surface, { device, format, width: WIDTH, height: HEIGHT });
 
