@@ -2,8 +2,6 @@
 
 Native [WebGPU](https://www.w3.org/TR/webgpu/) bindings — backed by [`wgpu`](https://github.com/gfx-rs/wgpu) — for the [Perry TypeScript-to-native compiler](https://github.com/PerryTS/perry).
 
-Closes [PerryTS/perry#571](https://github.com/PerryTS/perry/issues/571).
-
 ## What this is
 
 A Perry "native library" package: a Rust crate that exports `extern "C"` symbols the Perry compiler links into your TypeScript program. From your TS code you `import { ... } from "@perryts/webgpu"`; under the hood every call resolves to a direct call into the bundled staticlib — no Node addon, no IPC, no JSON round-trip on the hot path.
