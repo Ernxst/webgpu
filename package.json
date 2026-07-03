@@ -1,6 +1,6 @@
 {
   "name": "@perryts/webgpu",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "WebGPU bindings (spec-faithful, backed by wgpu) for the Perry TypeScript-to-native compiler. Run browser-authored shaders + pipelines unmodified under perry.",
   "license": "MIT",
   "types": "src/index.ts",
@@ -40,7 +40,7 @@
     "nativeLibrary": {
       "abiVersion": "0.5",
       "functions": [
-        { "name": "js_webgpu_request_adapter",                          "params": [],                                                            "returns": "promise" },
+        { "name": "js_webgpu_request_adapter",                          "params": ["i64"],                                                       "returns": "promise" },
         { "name": "js_webgpu_adapter_request_device",                   "params": ["i64"],                                                       "returns": "promise" },
         { "name": "js_webgpu_adapter_drop",                             "params": ["i64"],                                                       "returns": "void" },
         { "name": "js_webgpu_device_destroy",                           "params": ["i64"],                                                       "returns": "void" },
@@ -141,7 +141,8 @@
         "windows": {
           "cargo_features": [],
           "crate": ".",
-          "lib": "libperry_ext_webgpu.a"
+          "lib": "libperry_ext_webgpu.a",
+          "libs": ["d3dcompiler", "opengl32"]
         },
         "android": {
           "cargo_features": [],

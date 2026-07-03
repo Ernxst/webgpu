@@ -570,11 +570,27 @@ const NOT_NATIVE = "Not implemented under V8 fallback — compile with `perry co
 // ─── Adapter / Device / Queue ──────────────────────────────────────
 
 /**
- * Equivalent to the spec's `navigator.gpu.requestAdapter()` with no
- * descriptor — high-perf, fallback allowed. Rejects rather than
- * resolving to `null` if no adapter is available.
+ * Equivalent to the spec's `navigator.gpu.requestAdapter()` — high-perf,
+ * fallback allowed. Rejects rather than resolving to `null` if no adapter
+ * is available.
+ *
+ * `compatibleSurface` is a native spec-extra: pass the surface you intend
+ * to render to so the adapter is picked compatible with it. On **d3d12 /
+ * vulkan** this is required — otherwise `surfaceConfigure` later fails
+ * with a "no queue family supports presentation" error. Metal ignores it.
+ * The idiomatic native order is therefore surface-first:
+ *
+ * ```ts
+ * const surface = surfaceFromNativeView(viewGetNativeHandle(view));
+ * const adapter = await requestAdapter(surface);
+ * const { device, queue } = await adapterRequestDevice(adapter);
+ * surfaceConfigure(surface, { device, format, width, height });
+ * ```
+ *
+ * Omitting it (`requestAdapter()`) keeps the surfaceless behaviour, which
+ * is fine on Metal but not on d3d12/vulkan.
  */
-export function requestAdapter(): Promise<GPUAdapter> {
+export function requestAdapter(_compatibleSurface?: GPUSurface): Promise<GPUAdapter> {
   throw new Error(NOT_NATIVE);
 }
 

@@ -213,10 +213,14 @@ import {
 } from "@perryts/webgpu";
 
 const view = BloomView(800, 600);                  // perry-ui reserves the native view
-const adapter = await requestAdapter();
+const surface = surfaceFromNativeView(bloomViewGetNativeHandle(view)); // wrap it
+
+// Surface-first: pick the adapter *against* the surface. Required on
+// d3d12/vulkan (the adapter/device must be presentation-compatible or
+// `surfaceConfigure` fails); harmless on Metal.
+const adapter = await requestAdapter(surface);
 const { device, queue } = await adapterRequestDevice(adapter);
 
-const surface = surfaceFromNativeView(bloomViewGetNativeHandle(view)); // wrap it
 const format = surfaceGetPreferredFormat(surface, adapter);
 surfaceConfigure(surface, { device, format, width: 800, height: 600 });
 
@@ -259,6 +263,12 @@ The ergonomic camelCase API (`requestAdapter`, not `js_webgpu_request_adapter`) 
 | Linux    | — | ⏳ needs a display handle alongside the window (X11/Wayland) — follow-up | Vulkan |
 
 **macOS is verified end-to-end** — [`examples/triangle-macos`](examples/triangle-macos/) renders a live triangle into a perry-ui window. The other arms compile against their platform window handles but await on-device validation. Mobile and Windows invert view ownership (the toolkit/OS creates the view), so they go through `surfaceFromNativeView` with the toolkit's pointer rather than `requestSurface`. Linux still needs a richer entry point because a single pointer can't carry the X11/Wayland display connection wgpu also requires.
+
+**Windows notes** ([PerryTS/perry#5812](https://github.com/PerryTS/perry/issues/5812)):
+
+- **Adapter must be surface-compatible.** d3d12/vulkan reject `surfaceConfigure` unless the adapter was picked against the surface, so pass it: create the surface first, then `requestAdapter(surface)` (see the render example above). Metal doesn't care.
+- **Link libraries.** wgpu's d3d12/gl backends pull `D3DCompile` and `wgl*`; the manifest now declares `d3dcompiler` + `opengl32` under `targets.windows.libs` so the link resolves (previously `LNK2019`). Perry ≥ the #5812 build also auto-appends these when a d3d12/vulkan backend is declared.
+- **Known issue — gray window.** After the above, frames present but the window can stay gray. This is being tracked as a perry-ui-windows surface-compositing issue (the `BloomView` child `HWND` reparent/positioning path), *not* a `@perryts/webgpu` bug — see #5812.
 
 ## Out of scope
 

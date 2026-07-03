@@ -135,8 +135,13 @@ pub struct WGPUQuerySet(pub wgpu::QuerySet);
 
 /// `navigator.gpu.requestAdapter() -> Promise<GPUAdapter | null>` —
 /// requests a default adapter (high-performance, fallback allowed).
-/// v0.1 takes no descriptor; the spec's `powerPreference` /
-/// `forceFallbackAdapter` knobs are deferred to v0.2.
+///
+/// `surface_handle` is a native spec-extra (#5812 item 3): pass a surface
+/// handle to pick an adapter compatible with it, or `0` for none. On
+/// d3d12 / vulkan the adapter must be surface-compatible or a later
+/// `surface.configure` fails; Metal ignores it. The idiomatic native
+/// order is therefore surface-first: wrap the view with
+/// `surfaceFromNativeView`, then `requestAdapter(surface)`.
 ///
 /// Resolves to a numeric adapter handle, or rejects if no adapter is
 /// available. The spec returns `null` when no adapter is found; we
@@ -144,18 +149,36 @@ pub struct WGPUQuerySet(pub wgpu::QuerySet);
 /// paths instead of silently returning `0`. TS-side wrappers can map
 /// this to `null` if literal spec parity matters.
 #[no_mangle]
-pub extern "C" fn js_webgpu_request_adapter() -> *mut Promise {
+pub extern "C" fn js_webgpu_request_adapter(surface_handle: Handle) -> *mut Promise {
     let promise = JsPromise::new();
     let raw = promise.as_raw();
 
     spawn_blocking(move || {
-        let adapter = pollster::block_on(instance().request_adapter(
-            &wgpu::RequestAdapterOptions {
+        // #5812 item 3 — pick the adapter against the target surface when
+        // one is supplied (`surface_handle == 0` means none). On d3d12 /
+        // vulkan the adapter (and the device requested from it) must be
+        // compatible with the surface, or a later `surface.configure`
+        // fails with a "no queue family supports presentation" error;
+        // Metal ignores this. Callers that already hold a surface (the
+        // native pattern: create the view, wrap it, then request the
+        // adapter) pass it here. Holding the surface reference across the
+        // blocking request mirrors `adapterRequestDevice` above.
+        let adapter = if surface_handle == 0 {
+            pollster::block_on(instance().request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
                 force_fallback_adapter: false,
                 compatible_surface: None,
-            },
-        ));
+            }))
+        } else {
+            with_handle::<WGPUSurface, _, _>(surface_handle, |s| {
+                pollster::block_on(instance().request_adapter(&wgpu::RequestAdapterOptions {
+                    power_preference: wgpu::PowerPreference::HighPerformance,
+                    force_fallback_adapter: false,
+                    compatible_surface: Some(&s.surface),
+                }))
+            })
+            .flatten()
+        };
         match adapter {
             Some(a) => {
                 let h = register_handle(WGPUAdapter(a));
