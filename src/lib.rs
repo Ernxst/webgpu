@@ -207,7 +207,7 @@ pub extern "C" fn js_webgpu_adapter_request_device(adapter_handle: Handle) -> *m
                 &wgpu::DeviceDescriptor {
                     label: Some("perry-webgpu-device"),
                     required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits::downlevel_defaults(),
+                    required_limits: wgpu::Limits::default(),
                     memory_hints: wgpu::MemoryHints::default(),
                 },
                 None,
