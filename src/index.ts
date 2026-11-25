@@ -590,9 +590,7 @@ const NOT_NATIVE = "Not implemented under V8 fallback — compile with `perry co
  * Omitting it (`requestAdapter()`) keeps the surfaceless behaviour, which
  * is fine on Metal but not on d3d12/vulkan.
  */
-export function requestAdapter(_compatibleSurface?: GPUSurface): Promise<GPUAdapter> {
-  throw new Error(NOT_NATIVE);
-}
+export declare function requestAdapter(_compatibleSurface?: GPUSurface): Promise<GPUAdapter>;
 
 /**
  * Equivalent to the spec's `adapter.requestDevice()`. Resolves with
@@ -600,21 +598,15 @@ export function requestAdapter(_compatibleSurface?: GPUSurface): Promise<GPUAdap
  * round-trip — browsers expose `device.queue` synchronously after
  * `requestDevice` resolves.
  */
-export function adapterRequestDevice(
+export declare function adapterRequestDevice(
   _adapter: GPUAdapter
-): Promise<{ device: GPUDevice; queue: GPUQueue }> {
-  throw new Error(NOT_NATIVE);
-}
+): Promise<{ device: GPUDevice; queue: GPUQueue }>;
 
 /** Free the adapter handle. Idempotent. */
-export function adapterDrop(_adapter: GPUAdapter): void {
-  throw new Error(NOT_NATIVE);
-}
+export declare function adapterDrop(_adapter: GPUAdapter): void;
 
 /** `device.destroy()` — release the device and its queue. Idempotent. */
-export function deviceDestroy(_device: GPUDevice): void {
-  throw new Error(NOT_NATIVE);
-}
+export declare function deviceDestroy(_device: GPUDevice): void;
 
 /**
  * Drive the device's poll loop forward — necessary between
@@ -622,24 +614,18 @@ export function deviceDestroy(_device: GPUDevice): void {
  * `bufferUnmap` cycle. Spec-extra; the browser version of this code
  * wouldn't call `poll`.
  */
-export function devicePoll(_device: GPUDevice): void {
-  throw new Error(NOT_NATIVE);
-}
+export declare function devicePoll(_device: GPUDevice): void;
 
 // ─── Buffer ────────────────────────────────────────────────────────
 
 /** `device.createBuffer(descriptor)` — synchronous. */
-export function deviceCreateBuffer(
+export declare function deviceCreateBuffer(
   _device: GPUDevice,
   _descriptor: GPUBufferDescriptor
-): GPUBuffer {
-  throw new Error(NOT_NATIVE);
-}
+): GPUBuffer;
 
 /** `buffer.destroy()` — release the GPU memory. Idempotent. */
-export function bufferDestroy(_buffer: GPUBuffer): void {
-  throw new Error(NOT_NATIVE);
-}
+export declare function bufferDestroy(_buffer: GPUBuffer): void;
 
 /**
  * `buffer.mapAsync(mode, offset?, size?)` — make the buffer's
@@ -653,14 +639,12 @@ export function bufferDestroy(_buffer: GPUBuffer): void {
  * @param offset Defaults to `0`.
  * @param size   Defaults to `0`, meaning "to the end of the buffer".
  */
-export function bufferMapAsync(
+export declare function bufferMapAsync(
   _buffer: GPUBuffer,
   _mode: number,
   _offset?: number,
   _size?: number
-): Promise<void> {
-  throw new Error(NOT_NATIVE);
-}
+): Promise<void>;
 
 /**
  * `buffer.getMappedRange(offset?, size?)` — copies the mapped bytes
@@ -668,18 +652,14 @@ export function bufferMapAsync(
  * aliasing the GPU's staging memory; the binding copies because
  * Perry-runtime buffers are independently GC-managed.
  */
-export function bufferGetMappedRange(
+export declare function bufferGetMappedRange(
   _buffer: GPUBuffer,
   _offset?: number,
   _size?: number
-): Uint8Array {
-  throw new Error(NOT_NATIVE);
-}
+): Uint8Array;
 
 /** `buffer.unmap()` — release the host mapping. */
-export function bufferUnmap(_buffer: GPUBuffer): void {
-  throw new Error(NOT_NATIVE);
-}
+export declare function bufferUnmap(_buffer: GPUBuffer): void;
 
 // ─── Shader module ─────────────────────────────────────────────────
 
@@ -688,244 +668,190 @@ export function bufferUnmap(_buffer: GPUBuffer): void {
  * browser spec). `code` is the source string; label / sourceMap /
  * compilationHints are spec-optional and the binding ignores them.
  */
-export function deviceCreateShaderModule(
+export declare function deviceCreateShaderModule(
   _device: GPUDevice,
   _code: string
-): GPUShaderModule {
-  throw new Error(NOT_NATIVE);
-}
+): GPUShaderModule;
 
 // ─── Bind groups + pipeline layouts ────────────────────────────────
 
-export function deviceCreateBindGroupLayout(
+export declare function deviceCreateBindGroupLayout(
   _device: GPUDevice,
   _descriptor: GPUBindGroupLayoutDescriptor
-): GPUBindGroupLayout {
-  throw new Error(NOT_NATIVE);
-}
+): GPUBindGroupLayout;
 
-export function deviceCreatePipelineLayout(
+export declare function deviceCreatePipelineLayout(
   _device: GPUDevice,
   _descriptor: GPUPipelineLayoutDescriptor
-): GPUPipelineLayout {
-  throw new Error(NOT_NATIVE);
-}
+): GPUPipelineLayout;
 
-export function deviceCreateBindGroup(
+export declare function deviceCreateBindGroup(
   _device: GPUDevice,
   _descriptor: GPUBindGroupDescriptor
-): GPUBindGroup {
-  throw new Error(NOT_NATIVE);
-}
+): GPUBindGroup;
 
 // ─── Compute pipeline ──────────────────────────────────────────────
 
-export function deviceCreateComputePipeline(
+export declare function deviceCreateComputePipeline(
   _device: GPUDevice,
   _descriptor: GPUComputePipelineDescriptor
-): GPUComputePipeline {
-  throw new Error(NOT_NATIVE);
-}
+): GPUComputePipeline;
 
 /**
  * `device.createComputePipelineAsync(descriptor)` — same shape as
  * the sync call, but the pipeline build runs off the JS thread.
  */
-export function deviceCreateComputePipelineAsync(
+export declare function deviceCreateComputePipelineAsync(
   _device: GPUDevice,
   _descriptor: GPUComputePipelineDescriptor
-): Promise<GPUComputePipeline> {
-  throw new Error(NOT_NATIVE);
-}
+): Promise<GPUComputePipeline>;
 
 /**
  * `pipeline.getBindGroupLayout(index)` for compute pipelines —
  * useful when the pipeline was created with `layout: "auto"`.
  */
-export function computePipelineGetBindGroupLayout(
+export declare function computePipelineGetBindGroupLayout(
   _pipeline: GPUComputePipeline,
   _index: number
-): GPUBindGroupLayout {
-  throw new Error(NOT_NATIVE);
-}
+): GPUBindGroupLayout;
 
 // ─── Render pipeline ───────────────────────────────────────────────
 
-export function deviceCreateRenderPipeline(
+export declare function deviceCreateRenderPipeline(
   _device: GPUDevice,
   _descriptor: GPURenderPipelineDescriptor
-): GPURenderPipeline {
-  throw new Error(NOT_NATIVE);
-}
+): GPURenderPipeline;
 
 /**
  * `device.createRenderPipelineAsync(descriptor)` — same shape as the
  * sync call, but the pipeline build runs off the JS thread.
  */
-export function deviceCreateRenderPipelineAsync(
+export declare function deviceCreateRenderPipelineAsync(
   _device: GPUDevice,
   _descriptor: GPURenderPipelineDescriptor
-): Promise<GPURenderPipeline> {
-  throw new Error(NOT_NATIVE);
-}
+): Promise<GPURenderPipeline>;
 
 /** `pipeline.getBindGroupLayout(index)` for render pipelines. */
-export function renderPipelineGetBindGroupLayout(
+export declare function renderPipelineGetBindGroupLayout(
   _pipeline: GPURenderPipeline,
   _index: number
-): GPUBindGroupLayout {
-  throw new Error(NOT_NATIVE);
-}
+): GPUBindGroupLayout;
 
 // ─── Texture / view / sampler ──────────────────────────────────────
 
-export function deviceCreateTexture(
+export declare function deviceCreateTexture(
   _device: GPUDevice,
   _descriptor: GPUTextureDescriptor
-): GPUTexture {
-  throw new Error(NOT_NATIVE);
-}
+): GPUTexture;
 
 /**
  * `texture.createView(descriptor?)` — descriptor is optional; pass
  * `{}` (or omit) for a default view of the whole texture.
  */
-export function textureCreateView(
+export declare function textureCreateView(
   _texture: GPUTexture,
   _descriptor?: GPUTextureViewDescriptor
-): GPUTextureView {
-  throw new Error(NOT_NATIVE);
-}
+): GPUTextureView;
 
 /** `texture.destroy()` — idempotent. */
-export function textureDestroy(_texture: GPUTexture): void {
-  throw new Error(NOT_NATIVE);
-}
+export declare function textureDestroy(_texture: GPUTexture): void;
 
 /**
  * `device.createSampler(descriptor?)` — all fields are optional;
  * defaults match the spec (clamp-to-edge, nearest, no compare,
  * anisotropy 1).
  */
-export function deviceCreateSampler(
+export declare function deviceCreateSampler(
   _device: GPUDevice,
   _descriptor?: GPUSamplerDescriptor
-): GPUSampler {
-  throw new Error(NOT_NATIVE);
-}
+): GPUSampler;
 
 // ─── QuerySet ──────────────────────────────────────────────────────
 
-export function deviceCreateQuerySet(
+export declare function deviceCreateQuerySet(
   _device: GPUDevice,
   _descriptor: GPUQuerySetDescriptor
-): GPUQuerySet {
-  throw new Error(NOT_NATIVE);
-}
+): GPUQuerySet;
 
 /** `querySet.destroy()` — idempotent. */
-export function querySetDestroy(_querySet: GPUQuerySet): void {
-  throw new Error(NOT_NATIVE);
-}
+export declare function querySetDestroy(_querySet: GPUQuerySet): void;
 
 // ─── Command encoder ───────────────────────────────────────────────
 
 /** `device.createCommandEncoder()` — synchronous. */
-export function deviceCreateCommandEncoder(_device: GPUDevice): GPUCommandEncoder {
-  throw new Error(NOT_NATIVE);
-}
+export declare function deviceCreateCommandEncoder(_device: GPUDevice): GPUCommandEncoder;
 
 /** `encoder.beginComputePass()` — synchronous. */
-export function commandEncoderBeginComputePass(
+export declare function commandEncoderBeginComputePass(
   _encoder: GPUCommandEncoder
-): GPUComputePassEncoder {
-  throw new Error(NOT_NATIVE);
-}
+): GPUComputePassEncoder;
 
 /** `encoder.beginRenderPass(descriptor)` — synchronous. */
-export function commandEncoderBeginRenderPass(
+export declare function commandEncoderBeginRenderPass(
   _encoder: GPUCommandEncoder,
   _descriptor: GPURenderPassDescriptor
-): GPURenderPassEncoder {
-  throw new Error(NOT_NATIVE);
-}
+): GPURenderPassEncoder;
 
 /**
  * `encoder.copyBufferToBuffer(src, srcOffset, dst, dstOffset, size)`.
  * `size` must be a multiple of 4 per the spec.
  */
-export function commandEncoderCopyBufferToBuffer(
+export declare function commandEncoderCopyBufferToBuffer(
   _encoder: GPUCommandEncoder,
   _src: GPUBuffer,
   _srcOffset: number,
   _dst: GPUBuffer,
   _dstOffset: number,
   _size: number
-): void {
-  throw new Error(NOT_NATIVE);
-}
+): void;
 
 /** `encoder.copyBufferToTexture(source, destination, copySize)`. */
-export function commandEncoderCopyBufferToTexture(
+export declare function commandEncoderCopyBufferToTexture(
   _encoder: GPUCommandEncoder,
   _descriptor: { source: GPUImageCopyBuffer; destination: GPUImageCopyTexture; size: GPUExtent3D }
-): void {
-  throw new Error(NOT_NATIVE);
-}
+): void;
 
 /** `encoder.copyTextureToBuffer(source, destination, copySize)`. */
-export function commandEncoderCopyTextureToBuffer(
+export declare function commandEncoderCopyTextureToBuffer(
   _encoder: GPUCommandEncoder,
   _descriptor: { source: GPUImageCopyTexture; destination: GPUImageCopyBuffer; size: GPUExtent3D }
-): void {
-  throw new Error(NOT_NATIVE);
-}
+): void;
 
 /** `encoder.copyTextureToTexture(source, destination, copySize)`. */
-export function commandEncoderCopyTextureToTexture(
+export declare function commandEncoderCopyTextureToTexture(
   _encoder: GPUCommandEncoder,
   _descriptor: { source: GPUImageCopyTexture; destination: GPUImageCopyTexture; size: GPUExtent3D }
-): void {
-  throw new Error(NOT_NATIVE);
-}
+): void;
 
 /**
  * `encoder.resolveQuerySet(querySet, firstQuery, queryCount, destination, destinationOffset)`.
  */
-export function commandEncoderResolveQuerySet(
+export declare function commandEncoderResolveQuerySet(
   _encoder: GPUCommandEncoder,
   _querySet: GPUQuerySet,
   _firstQuery: number,
   _queryCount: number,
   _destination: GPUBuffer,
   _destinationOffset: number
-): void {
-  throw new Error(NOT_NATIVE);
-}
+): void;
 
 /** `encoder.finish()` — consumes the encoder. */
-export function commandEncoderFinish(_encoder: GPUCommandEncoder): GPUCommandBuffer {
-  throw new Error(NOT_NATIVE);
-}
+export declare function commandEncoderFinish(_encoder: GPUCommandEncoder): GPUCommandBuffer;
 
 // ─── Compute pass ──────────────────────────────────────────────────
 
 /** `pass.setPipeline(pipeline)`. */
-export function computePassSetPipeline(
+export declare function computePassSetPipeline(
   _pass: GPUComputePassEncoder,
   _pipeline: GPUComputePipeline
-): void {
-  throw new Error(NOT_NATIVE);
-}
+): void;
 
 /** `pass.setBindGroup(index, bindGroup)`. */
-export function computePassSetBindGroup(
+export declare function computePassSetBindGroup(
   _pass: GPUComputePassEncoder,
   _index: number,
   _bindGroup: GPUBindGroup
-): void {
-  throw new Error(NOT_NATIVE);
-}
+): void;
 
 /**
  * `pass.setBindGroup(index, bindGroup, dynamicOffsets)` — variant
@@ -933,109 +859,89 @@ export function computePassSetBindGroup(
  * `number[]`; the binding JSON-encodes it to keep the FFI surface
  * tractable.
  */
-export function computePassSetBindGroupDyn(
+export declare function computePassSetBindGroupDyn(
   _pass: GPUComputePassEncoder,
   _index: number,
   _bindGroup: GPUBindGroup,
   _dynamicOffsetsJson: string
-): void {
-  throw new Error(NOT_NATIVE);
-}
+): void;
 
 /** `pass.dispatchWorkgroups(x, y?, z?)` — `y` and `z` default to `1`. */
-export function computePassDispatchWorkgroups(
+export declare function computePassDispatchWorkgroups(
   _pass: GPUComputePassEncoder,
   _x: number,
   _y?: number,
   _z?: number
-): void {
-  throw new Error(NOT_NATIVE);
-}
+): void;
 
 /** `pass.end()` — finalises the pass. */
-export function computePassEnd(_pass: GPUComputePassEncoder): void {
-  throw new Error(NOT_NATIVE);
-}
+export declare function computePassEnd(_pass: GPUComputePassEncoder): void;
 
 // ─── Render pass ───────────────────────────────────────────────────
 
 /** `pass.setPipeline(pipeline)`. */
-export function renderPassSetPipeline(
+export declare function renderPassSetPipeline(
   _pass: GPURenderPassEncoder,
   _pipeline: GPURenderPipeline
-): void {
-  throw new Error(NOT_NATIVE);
-}
+): void;
 
 /** `pass.setBindGroup(index, bindGroup)`. */
-export function renderPassSetBindGroup(
+export declare function renderPassSetBindGroup(
   _pass: GPURenderPassEncoder,
   _index: number,
   _bindGroup: GPUBindGroup
-): void {
-  throw new Error(NOT_NATIVE);
-}
+): void;
 
 /** `pass.setBindGroup(index, bindGroup, dynamicOffsets)`. */
-export function renderPassSetBindGroupDyn(
+export declare function renderPassSetBindGroupDyn(
   _pass: GPURenderPassEncoder,
   _index: number,
   _bindGroup: GPUBindGroup,
   _dynamicOffsetsJson: string
-): void {
-  throw new Error(NOT_NATIVE);
-}
+): void;
 
 /**
  * `pass.setVertexBuffer(slot, buffer, offset?, size?)`. `size: 0`
  * means "to the end of the buffer" (the spec's `undefined` sentinel).
  */
-export function renderPassSetVertexBuffer(
+export declare function renderPassSetVertexBuffer(
   _pass: GPURenderPassEncoder,
   _slot: number,
   _buffer: GPUBuffer,
   _offset?: number,
   _size?: number
-): void {
-  throw new Error(NOT_NATIVE);
-}
+): void;
 
 /** `pass.setIndexBuffer(buffer, indexFormat, offset?, size?)`. */
-export function renderPassSetIndexBuffer(
+export declare function renderPassSetIndexBuffer(
   _pass: GPURenderPassEncoder,
   _buffer: GPUBuffer,
   _indexFormat: GPUIndexFormat,
   _offset?: number,
   _size?: number
-): void {
-  throw new Error(NOT_NATIVE);
-}
+): void;
 
 /** `pass.draw(vertexCount, instanceCount?, firstVertex?, firstInstance?)`. */
-export function renderPassDraw(
+export declare function renderPassDraw(
   _pass: GPURenderPassEncoder,
   _vertexCount: number,
   _instanceCount?: number,
   _firstVertex?: number,
   _firstInstance?: number
-): void {
-  throw new Error(NOT_NATIVE);
-}
+): void;
 
 /** `pass.drawIndexed(indexCount, instanceCount?, firstIndex?, baseVertex?, firstInstance?)`. */
-export function renderPassDrawIndexed(
+export declare function renderPassDrawIndexed(
   _pass: GPURenderPassEncoder,
   _indexCount: number,
   _instanceCount?: number,
   _firstIndex?: number,
   _baseVertex?: number,
   _firstInstance?: number
-): void {
-  throw new Error(NOT_NATIVE);
-}
+): void;
 
 /** `pass.setViewport(x, y, w, h, minDepth, maxDepth)`. */
-export function renderPassSetViewport(
+export declare function renderPassSetViewport(
   _pass: GPURenderPassEncoder,
   _x: number,
   _y: number,
@@ -1043,84 +949,66 @@ export function renderPassSetViewport(
   _h: number,
   _minDepth: number,
   _maxDepth: number
-): void {
-  throw new Error(NOT_NATIVE);
-}
+): void;
 
 /** `pass.setScissorRect(x, y, w, h)`. */
-export function renderPassSetScissorRect(
+export declare function renderPassSetScissorRect(
   _pass: GPURenderPassEncoder,
   _x: number,
   _y: number,
   _w: number,
   _h: number
-): void {
-  throw new Error(NOT_NATIVE);
-}
+): void;
 
 /** `pass.setBlendConstant({r,g,b,a})` — components in 0..=1 for unorm formats. */
-export function renderPassSetBlendConstant(
+export declare function renderPassSetBlendConstant(
   _pass: GPURenderPassEncoder,
   _r: number,
   _g: number,
   _b: number,
   _a: number
-): void {
-  throw new Error(NOT_NATIVE);
-}
+): void;
 
 /** `pass.setStencilReference(reference)`. */
-export function renderPassSetStencilReference(
+export declare function renderPassSetStencilReference(
   _pass: GPURenderPassEncoder,
   _reference: number
-): void {
-  throw new Error(NOT_NATIVE);
-}
+): void;
 
 /** `pass.beginOcclusionQuery(queryIndex)`. */
-export function renderPassBeginOcclusionQuery(
+export declare function renderPassBeginOcclusionQuery(
   _pass: GPURenderPassEncoder,
   _queryIndex: number
-): void {
-  throw new Error(NOT_NATIVE);
-}
+): void;
 
 /** `pass.endOcclusionQuery()`. */
-export function renderPassEndOcclusionQuery(_pass: GPURenderPassEncoder): void {
-  throw new Error(NOT_NATIVE);
-}
+export declare function renderPassEndOcclusionQuery(_pass: GPURenderPassEncoder): void;
 
 /** `pass.end()` — finalises the pass. */
-export function renderPassEnd(_pass: GPURenderPassEncoder): void {
-  throw new Error(NOT_NATIVE);
-}
+export declare function renderPassEnd(_pass: GPURenderPassEncoder): void;
 
 // ─── Queue ─────────────────────────────────────────────────────────
 
 /** `queue.submit(commandBuffers)`. Each command buffer is consumed. */
-export function queueSubmit(
+export declare function queueSubmit(
   _queue: GPUQueue,
   _commandBuffersJson: string
-): void {
-  throw new Error(NOT_NATIVE);
-}
+): void;
 
 /** `queue.writeBuffer(buffer, bufferOffset, data)`. */
-export function queueWriteBuffer(
+export declare function queueWriteBuffer(
   _queue: GPUQueue,
   _buffer: GPUBuffer,
   _bufferOffset: number,
   _data: Uint8Array | Buffer
-): void {
-  throw new Error(NOT_NATIVE);
-}
+): void;
 
 /**
  * `queue.writeTexture(destination, data, dataLayout, size)` — the
  * four spec args are packed into one descriptor object and a
  * separate `data` buffer.
  */
-export function queueWriteTexture(
+export declare function queueWriteTexture(
   _queue: GPUQueue,
   _descriptor: {
     destination: GPUImageCopyTexture;
@@ -1128,9 +1016,7 @@ export function queueWriteTexture(
     size: GPUExtent3D;
   },
   _data: Uint8Array | Buffer
-): void {
-  throw new Error(NOT_NATIVE);
-}
+): void;
 
 /**
  * `queue.onSubmittedWorkDone()` — resolves once every command buffer
@@ -1138,19 +1024,15 @@ export function queueWriteTexture(
  * Implemented via wgpu's `on_submitted_work_done` callback + a poll
  * loop on the queue's parent device.
  */
-export function queueOnSubmittedWorkDone(_queue: GPUQueue): Promise<void> {
-  throw new Error(NOT_NATIVE);
-}
+export declare function queueOnSubmittedWorkDone(_queue: GPUQueue): Promise<void>;
 
 // ─── Error scopes ──────────────────────────────────────────────────
 
 /** `device.pushErrorScope(filter)`. */
-export function devicePushErrorScope(
+export declare function devicePushErrorScope(
   _device: GPUDevice,
   _filter: GPUErrorFilter
-): void {
-  throw new Error(NOT_NATIVE);
-}
+): void;
 
 /**
  * `device.popErrorScope()` — resolves with a JSON-encoded
@@ -1158,9 +1040,7 @@ export function devicePushErrorScope(
  * string when the scope captured nothing (which the call site can
  * map to `null`, matching the spec).
  */
-export function devicePopErrorScope(_device: GPUDevice): Promise<string> {
-  throw new Error(NOT_NATIVE);
-}
+export declare function devicePopErrorScope(_device: GPUDevice): Promise<string>;
 
 // ─── On-screen surface (GPUSurface / GPUCanvasContext) ─────────────
 
@@ -1216,9 +1096,7 @@ export interface GPUCanvasConfiguration {
  * (from `@perryts/ui`), then `surfaceConfigure(s, …)` and run the render
  * loop. Throws under the V8 fallback.
  */
-export function requestSurface(_descriptor: GPUSurfaceDescriptor): GPUSurface {
-  throw new Error(NOT_NATIVE);
-}
+export declare function requestSurface(_descriptor: GPUSurfaceDescriptor): GPUSurface;
 
 /**
  * Wrap a native view the host already created (the inverse of
@@ -1227,37 +1105,29 @@ export function requestSurface(_descriptor: GPUSurfaceDescriptor): GPUSurface {
  * (Android). The view must be GPU-capable and outlive the surface; we do
  * not take ownership of it.
  */
-export function surfaceFromNativeView(_viewPtr: number): GPUSurface {
-  throw new Error(NOT_NATIVE);
-}
+export declare function surfaceFromNativeView(_viewPtr: number): GPUSurface;
 
 /**
  * The native view pointer backing the surface — pass it to
  * `@perryts/ui`'s `embedNativeView()` to mount it in the widget tree.
  */
-export function surfaceGetViewPtr(_surface: GPUSurface): number {
-  throw new Error(NOT_NATIVE);
-}
+export declare function surfaceGetViewPtr(_surface: GPUSurface): number;
 
 /**
  * The surface's preferred swapchain format for the given adapter —
  * the native analogue of `navigator.gpu.getPreferredCanvasFormat()`.
  * Feed it straight into {@link surfaceConfigure}'s `format`.
  */
-export function surfaceGetPreferredFormat(
+export declare function surfaceGetPreferredFormat(
   _surface: GPUSurface,
   _adapter: GPUAdapter
-): GPUTextureFormat {
-  throw new Error(NOT_NATIVE);
-}
+): GPUTextureFormat;
 
 /** `context.configure(configuration)` — bind device + swapchain format. */
-export function surfaceConfigure(
+export declare function surfaceConfigure(
   _surface: GPUSurface,
   _configuration: GPUCanvasConfiguration
-): void {
-  throw new Error(NOT_NATIVE);
-}
+): void;
 
 /**
  * `context.getCurrentTexture()` — acquire this frame's swapchain image.
@@ -1265,9 +1135,7 @@ export function surfaceConfigure(
  * like a device texture (it is the render-pass color attachment). Call
  * {@link surfacePresent} once the frame's command buffers are submitted.
  */
-export function surfaceGetCurrentTexture(_surface: GPUSurface): GPUTexture {
-  throw new Error(NOT_NATIVE);
-}
+export declare function surfaceGetCurrentTexture(_surface: GPUSurface): GPUTexture;
 
 /**
  * Present the frame acquired by {@link surfaceGetCurrentTexture}.
@@ -1275,16 +1143,10 @@ export function surfaceGetCurrentTexture(_surface: GPUSurface): GPUTexture {
  * needs this explicit hand-back, so it's the one call a ported render
  * loop must add after `queueSubmit`.
  */
-export function surfacePresent(_surface: GPUSurface): void {
-  throw new Error(NOT_NATIVE);
-}
+export declare function surfacePresent(_surface: GPUSurface): void;
 
 /** `context.unconfigure()` — drop the swapchain (e.g. before a resize). */
-export function surfaceUnconfigure(_surface: GPUSurface): void {
-  throw new Error(NOT_NATIVE);
-}
+export declare function surfaceUnconfigure(_surface: GPUSurface): void;
 
 /** Release the surface and, if `requestSurface` created it, its view. Idempotent. */
-export function surfaceDrop(_surface: GPUSurface): void {
-  throw new Error(NOT_NATIVE);
-}
+export declare function surfaceDrop(_surface: GPUSurface): void;
