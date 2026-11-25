@@ -206,7 +206,8 @@ pub extern "C" fn js_webgpu_adapter_request_device(adapter_handle: Handle) -> *m
             pollster::block_on(a.0.request_device(
                 &wgpu::DeviceDescriptor {
                     label: Some("perry-webgpu-device"),
-                    required_features: wgpu::Features::empty(),
+                    // Without it wgpu rejects read-only and read-write storage textures, which WebGPU allows.
+                    required_features: a.0.features() & wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
                     required_limits: wgpu::Limits::default(),
                     memory_hints: wgpu::MemoryHints::default(),
                 },
