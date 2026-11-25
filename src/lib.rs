@@ -1569,6 +1569,12 @@ pub extern "C" fn js_webgpu_texture_destroy(texture_handle: Handle) {
     drop_handle(texture_handle);
 }
 
+#[no_mangle]
+pub extern "C" fn js_webgpu_texture_view_drop(view_handle: Handle) {
+    let _ = take_handle::<WGPUTextureView>(view_handle);
+    drop_handle(view_handle);
+}
+
 #[derive(Deserialize, Default)]
 struct SamplerDescriptor {
     #[serde(default)]

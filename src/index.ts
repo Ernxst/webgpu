@@ -755,6 +755,7 @@ export declare function textureCreateView(
 
 /** `texture.destroy()` — idempotent. */
 export declare function textureDestroy(_texture: GPUTexture): void;
+export declare function textureViewDrop(_view: GPUTextureView): void;
 
 /**
  * `device.createSampler(descriptor?)` — all fields are optional;

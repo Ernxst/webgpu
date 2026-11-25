@@ -66,6 +66,7 @@
         { "name": "js_webgpu_device_create_texture",                    "params": ["i64", "json"],                                               "returns": "i64" },
         { "name": "js_webgpu_texture_create_view",                      "params": ["i64", "json"],                                               "returns": "i64" },
         { "name": "js_webgpu_texture_destroy",                          "params": ["i64"],                                                       "returns": "void" },
+        { "name": "js_webgpu_texture_view_drop",                        "params": ["i64"],                                                       "returns": "void" },
         { "name": "js_webgpu_device_create_sampler",                    "params": ["i64", "json"],                                               "returns": "i64" },
 
         { "name": "js_webgpu_device_create_query_set",                  "params": ["i64", "json"],                                               "returns": "i64" },
