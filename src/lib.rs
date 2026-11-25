@@ -294,9 +294,9 @@ pub unsafe extern "C" fn js_webgpu_device_create_buffer(
             usage: wgpu::BufferUsages::from_bits_truncate(desc.usage),
             mapped_at_creation: desc.mapped_at_creation,
         });
-        register_handle(WGPUBuffer(buffer))
+        WGPUBuffer(buffer)
     })
-    .unwrap_or(0)
+    .map_or(0, |v| register_handle(v))
 }
 
 /// `buffer.destroy()` — releases the buffer. Idempotent.
@@ -464,9 +464,9 @@ pub unsafe extern "C" fn js_webgpu_device_create_shader_module(
             label: None,
             source: wgpu::ShaderSource::Wgsl(code.into()),
         });
-        register_handle(WGPUShaderModule(module))
+        WGPUShaderModule(module)
     })
-    .unwrap_or(0)
+    .map_or(0, |v| register_handle(v))
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -630,9 +630,9 @@ pub unsafe extern "C" fn js_webgpu_device_create_bind_group_layout(
             label: desc.label.as_deref(),
             entries: &entries,
         });
-        register_handle(WGPUBindGroupLayout(layout))
+        WGPUBindGroupLayout(layout)
     })
-    .unwrap_or(0)
+    .map_or(0, |v| register_handle(v))
 }
 
 fn parse_view_dimension(s: Option<&str>) -> wgpu::TextureViewDimension {
@@ -749,9 +749,9 @@ pub unsafe extern "C" fn js_webgpu_device_create_pipeline_layout(
             bind_group_layouts: &layouts,
             push_constant_ranges: &[],
         });
-        register_handle(WGPUPipelineLayout(pl))
+        WGPUPipelineLayout(pl)
     })
-    .unwrap_or(0)
+    .map_or(0, |v| register_handle(v))
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -925,9 +925,9 @@ pub unsafe extern "C" fn js_webgpu_device_create_bind_group(
             layout: unsafe { &*layout_ptr },
             entries: &bind_entries,
         });
-        register_handle(WGPUBindGroup(bg))
+        WGPUBindGroup(bg)
     })
-    .unwrap_or(0)
+    .map_or(0, |v| register_handle(v))
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -1010,9 +1010,9 @@ pub unsafe extern "C" fn js_webgpu_device_create_compute_pipeline(
             compilation_options: wgpu::PipelineCompilationOptions::default(),
             cache: None,
         });
-        register_handle(WGPUComputePipeline(pipeline))
+        WGPUComputePipeline(pipeline)
     })
-    .unwrap_or(0)
+    .map_or(0, |v| register_handle(v))
 }
 
 /// `pipeline.getBindGroupLayout(index) -> GPUBindGroupLayout` —
@@ -1026,9 +1026,9 @@ pub extern "C" fn js_webgpu_compute_pipeline_get_bind_group_layout(
 ) -> Handle {
     with_handle::<WGPUComputePipeline, _, _>(pipeline_handle, |p| {
         let bgl = p.0.get_bind_group_layout(index);
-        register_handle(WGPUBindGroupLayout(bgl))
+        WGPUBindGroupLayout(bgl)
     })
-    .unwrap_or(0)
+    .map_or(0, |v| register_handle(v))
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -1043,9 +1043,9 @@ pub extern "C" fn js_webgpu_device_create_command_encoder(device_handle: Handle)
         let encoder = d
             .0
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-        register_handle(WGPUCommandEncoder(Mutex::new(Some(encoder))))
+        WGPUCommandEncoder(Mutex::new(Some(encoder)))
     })
-    .unwrap_or(0)
+    .map_or(0, |v| register_handle(v))
 }
 
 /// `encoder.beginComputePass() -> GPUComputePassEncoder` — synchronous.
@@ -1060,7 +1060,7 @@ pub extern "C" fn js_webgpu_command_encoder_begin_compute_pass(
     with_handle::<WGPUCommandEncoder, _, _>(encoder_handle, |ce| {
         let mut slot = ce.0.lock();
         let Some(encoder) = slot.as_mut() else {
-            return 0;
+            return None;
         };
         let pass = encoder
             .begin_compute_pass(&wgpu::ComputePassDescriptor {
@@ -1068,9 +1068,10 @@ pub extern "C" fn js_webgpu_command_encoder_begin_compute_pass(
                 timestamp_writes: None,
             })
             .forget_lifetime();
-        register_handle(WGPUComputePass(Mutex::new(Some(pass))))
+        Some(WGPUComputePass(Mutex::new(Some(pass))))
     })
-    .unwrap_or(0)
+    .flatten()
+    .map_or(0, |v| register_handle(v))
 }
 
 /// `encoder.copyBufferToBuffer(src, srcOffset, dst, dstOffset, size)` —
@@ -1112,12 +1113,13 @@ pub extern "C" fn js_webgpu_command_encoder_finish(encoder_handle: Handle) -> Ha
     with_handle::<WGPUCommandEncoder, _, _>(encoder_handle, |ce| {
         let encoder = match ce.0.lock().take() {
             Some(e) => e,
-            None => return 0,
+            None => return None,
         };
         let cb = encoder.finish();
-        register_handle(WGPUCommandBuffer(Mutex::new(Some(cb))))
+        Some(WGPUCommandBuffer(Mutex::new(Some(cb))))
     })
-    .unwrap_or(0)
+    .flatten()
+    .map_or(0, |v| register_handle(v))
 }
 
 /// `pass.setPipeline(pipeline)` — synchronous.
@@ -1468,9 +1470,9 @@ pub unsafe extern "C" fn js_webgpu_device_create_texture(
             usage: wgpu::TextureUsages::from_bits_truncate(desc.usage),
             view_formats: &view_formats,
         });
-        register_handle(WGPUTexture(texture))
+        WGPUTexture(texture)
     })
-    .unwrap_or(0)
+    .map_or(0, |v| register_handle(v))
 }
 
 #[derive(Deserialize, Default)]
@@ -1519,8 +1521,8 @@ pub unsafe extern "C" fn js_webgpu_texture_create_view(
     };
 
     // Build + register a view from whichever texture the handle names.
-    let make = |tex: &wgpu::Texture| -> Handle {
-        let view = tex.create_view(&wgpu::TextureViewDescriptor {
+    let make = |tex: &wgpu::Texture| -> wgpu::TextureView {
+        tex.create_view(&wgpu::TextureViewDescriptor {
             label: parsed.label.as_deref(),
             format: parsed.format.as_deref().map(parse_texture_format),
             dimension: parsed
@@ -1540,13 +1542,12 @@ pub unsafe extern "C" fn js_webgpu_texture_create_view(
             } else {
                 Some(parsed.array_layer_count)
             },
-        });
-        register_handle(WGPUTextureView(view))
+        })
     };
 
     // A normal device texture.
-    if let Some(h) = with_handle::<WGPUTexture, _, _>(texture_handle, |t| make(&t.0)) {
-        return h;
+    if let Some(view) = with_handle::<WGPUTexture, _, _>(texture_handle, |t| make(&t.0)) {
+        return register_handle(WGPUTextureView(view));
     }
     // A swapchain texture from `surfaceGetCurrentTexture` — the live
     // `SurfaceTexture` lives on the surface (it isn't cloneable), so
@@ -1558,7 +1559,7 @@ pub unsafe extern "C" fn js_webgpu_texture_create_view(
         .flatten()
     })
     .flatten()
-    .unwrap_or(0)
+    .map_or(0, |view| register_handle(WGPUTextureView(view)))
 }
 
 /// `texture.destroy()` — release the GPU memory. Idempotent.
@@ -1657,9 +1658,9 @@ pub unsafe extern "C" fn js_webgpu_device_create_sampler(
             anisotropy_clamp: desc.max_anisotropy.max(1) as u16,
             border_color: None,
         });
-        register_handle(WGPUSampler(sampler))
+        WGPUSampler(sampler)
     })
-    .unwrap_or(0)
+    .map_or(0, |v| register_handle(v))
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -2154,9 +2155,9 @@ pub unsafe extern "C" fn js_webgpu_device_create_render_pipeline(
 
     with_handle::<WGPUDevice, _, _>(device_handle, |d| {
         let pipeline = build_render_pipeline(&d.0, &desc, layout_ptr, vmod_ptr, fmod_ptr);
-        register_handle(WGPURenderPipeline(pipeline))
+        WGPURenderPipeline(pipeline)
     })
-    .unwrap_or(0)
+    .map_or(0, |v| register_handle(v))
 }
 
 /// `pipeline.getBindGroupLayout(index) -> GPUBindGroupLayout` —
@@ -2169,9 +2170,9 @@ pub extern "C" fn js_webgpu_render_pipeline_get_bind_group_layout(
 ) -> Handle {
     with_handle::<WGPURenderPipeline, _, _>(pipeline_handle, |p| {
         let bgl = p.0.get_bind_group_layout(index);
-        register_handle(WGPUBindGroupLayout(bgl))
+        WGPUBindGroupLayout(bgl)
     })
-    .unwrap_or(0)
+    .map_or(0, |v| register_handle(v))
 }
 
 /// `device.createRenderPipelineAsync(descriptor) -> Promise<GPURenderPipeline>`.
@@ -2483,7 +2484,7 @@ pub unsafe extern "C" fn js_webgpu_command_encoder_begin_render_pass(
     with_handle::<WGPUCommandEncoder, _, _>(encoder_handle, |ce| {
         let mut slot = ce.0.lock();
         let Some(encoder) = slot.as_mut() else {
-            return 0;
+            return None;
         };
 
         let color_attachments: Vec<Option<wgpu::RenderPassColorAttachment>> = desc
@@ -2549,9 +2550,10 @@ pub unsafe extern "C" fn js_webgpu_command_encoder_begin_render_pass(
                 occlusion_query_set: occlusion_qs_ptr.map(|p| unsafe { &*p }),
             })
             .forget_lifetime();
-        register_handle(WGPURenderPass(Mutex::new(Some(pass))))
+        Some(WGPURenderPass(Mutex::new(Some(pass))))
     })
-    .unwrap_or(0)
+    .flatten()
+    .map_or(0, |v| register_handle(v))
 }
 
 /// `pass.setPipeline(pipeline)` for render passes.
@@ -2864,9 +2866,9 @@ pub unsafe extern "C" fn js_webgpu_device_create_query_set(
             ty,
             count: desc.count,
         });
-        register_handle(WGPUQuerySet(qs))
+        WGPUQuerySet(qs)
     })
-    .unwrap_or(0)
+    .map_or(0, |v| register_handle(v))
 }
 
 /// `querySet.destroy()` — release. Idempotent.
@@ -3702,13 +3704,14 @@ pub extern "C" fn js_webgpu_surface_get_current_texture(surface_handle: Handle) 
     let tex_handle = register_handle(WGPUSurfaceTexture { surface_handle });
     // Drop a prior frame's handle the caller never presented, so the
     // registry doesn't grow one entry per frame.
-    let _ = with_handle::<WGPUSurface, _, _>(surface_handle, |s| {
-        let prev = std::mem::replace(&mut *s.issued_tex.lock(), tex_handle);
-        if prev != 0 {
-            let _ = take_handle::<WGPUSurfaceTexture>(prev);
-            drop_handle(prev);
-        }
-    });
+    let prev = with_handle::<WGPUSurface, _, _>(surface_handle, |s| {
+        std::mem::replace(&mut *s.issued_tex.lock(), tex_handle)
+    })
+    .unwrap_or(0);
+    if prev != 0 {
+        let _ = take_handle::<WGPUSurfaceTexture>(prev);
+        drop_handle(prev);
+    }
     tex_handle
 }
 
@@ -3718,18 +3721,19 @@ pub extern "C" fn js_webgpu_surface_get_current_texture(surface_handle: Handle) 
 /// call a ported render loop must add). No-op if nothing is in flight.
 #[no_mangle]
 pub extern "C" fn js_webgpu_surface_present(surface_handle: Handle) {
-    let _ = with_handle::<WGPUSurface, _, _>(surface_handle, |s| {
+    let prev = with_handle::<WGPUSurface, _, _>(surface_handle, |s| {
         if let Some(st) = s.current.lock().take() {
             st.present();
             #[cfg(target_os = "windows")]
             win32::diag("surfacePresent", s.view_ptr);
         }
-        let prev = std::mem::replace(&mut *s.issued_tex.lock(), 0);
-        if prev != 0 {
-            let _ = take_handle::<WGPUSurfaceTexture>(prev);
-            drop_handle(prev);
-        }
-    });
+        std::mem::replace(&mut *s.issued_tex.lock(), 0)
+    })
+    .unwrap_or(0);
+    if prev != 0 {
+        let _ = take_handle::<WGPUSurfaceTexture>(prev);
+        drop_handle(prev);
+    }
 }
 
 /// `context.unconfigure()` — drop the swapchain and any in-flight frame.
