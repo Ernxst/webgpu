@@ -1174,6 +1174,22 @@ pub extern "C" fn js_webgpu_compute_pass_dispatch_workgroups(
     });
 }
 
+/// `pass.dispatchWorkgroupsIndirect(indirectBuffer, indirectOffset)`.
+#[no_mangle]
+pub extern "C" fn js_webgpu_compute_pass_dispatch_workgroups_indirect(
+    pass_handle: Handle,
+    buffer_handle: Handle,
+    offset: f64,
+) {
+    let _ = with_handle::<WGPUComputePass, _, _>(pass_handle, |cp| {
+        let mut slot = cp.0.lock();
+        let Some(pass) = slot.as_mut() else { return };
+        let _ = with_handle::<WGPUBuffer, _, _>(buffer_handle, |b| {
+            pass.dispatch_workgroups_indirect(&b.0, offset.max(0.0) as u64);
+        });
+    });
+}
+
 /// `pass.end()` — synchronous. After `end()` the pass handle is
 /// effectively dead; subsequent set/dispatch calls are no-ops.
 #[no_mangle]
@@ -2730,6 +2746,38 @@ pub extern "C" fn js_webgpu_render_pass_draw_indexed(
             base_vertex,
             first_instance..first_instance + inst,
         );
+    });
+}
+
+/// `pass.drawIndirect(indirectBuffer, indirectOffset)`.
+#[no_mangle]
+pub extern "C" fn js_webgpu_render_pass_draw_indirect(
+    pass_handle: Handle,
+    buffer_handle: Handle,
+    offset: f64,
+) {
+    let _ = with_handle::<WGPURenderPass, _, _>(pass_handle, |rp| {
+        let mut slot = rp.0.lock();
+        let Some(pass) = slot.as_mut() else { return };
+        let _ = with_handle::<WGPUBuffer, _, _>(buffer_handle, |b| {
+            pass.draw_indirect(&b.0, offset.max(0.0) as u64);
+        });
+    });
+}
+
+/// `pass.drawIndexedIndirect(indirectBuffer, indirectOffset)`.
+#[no_mangle]
+pub extern "C" fn js_webgpu_render_pass_draw_indexed_indirect(
+    pass_handle: Handle,
+    buffer_handle: Handle,
+    offset: f64,
+) {
+    let _ = with_handle::<WGPURenderPass, _, _>(pass_handle, |rp| {
+        let mut slot = rp.0.lock();
+        let Some(pass) = slot.as_mut() else { return };
+        let _ = with_handle::<WGPUBuffer, _, _>(buffer_handle, |b| {
+            pass.draw_indexed_indirect(&b.0, offset.max(0.0) as u64);
+        });
     });
 }
 

@@ -86,6 +86,7 @@
         { "name": "js_webgpu_compute_pass_set_bind_group",              "params": ["i64", "i32", "i64"],                                         "returns": "void" },
         { "name": "js_webgpu_compute_pass_set_bind_group_dyn",          "params": ["i64", "i32", "i64", "string"],                               "returns": "void" },
         { "name": "js_webgpu_compute_pass_dispatch_workgroups",         "params": ["i64", "i32", "i32", "i32"],                                  "returns": "void" },
+        { "name": "js_webgpu_compute_pass_dispatch_workgroups_indirect", "params": ["i64", "i64", "number"],                                     "returns": "void" },
         { "name": "js_webgpu_compute_pass_end",                         "params": ["i64"],                                                       "returns": "void" },
 
         { "name": "js_webgpu_render_pass_set_pipeline",                 "params": ["i64", "i64"],                                                "returns": "void" },
@@ -95,6 +96,8 @@
         { "name": "js_webgpu_render_pass_set_index_buffer",             "params": ["i64", "i64", "string", "number", "number"],                 "returns": "void" },
         { "name": "js_webgpu_render_pass_draw",                         "params": ["i64", "i32", "i32", "i32", "i32"],                           "returns": "void" },
         { "name": "js_webgpu_render_pass_draw_indexed",                 "params": ["i64", "i32", "i32", "i32", "i32", "i32"],                    "returns": "void" },
+        { "name": "js_webgpu_render_pass_draw_indirect",                "params": ["i64", "i64", "number"],                                     "returns": "void" },
+        { "name": "js_webgpu_render_pass_draw_indexed_indirect",        "params": ["i64", "i64", "number"],                                     "returns": "void" },
         { "name": "js_webgpu_render_pass_set_viewport",                 "params": ["i64", "number", "number", "number", "number", "number", "number"], "returns": "void" },
         { "name": "js_webgpu_render_pass_set_scissor_rect",             "params": ["i64", "i32", "i32", "i32", "i32"],                           "returns": "void" },
         { "name": "js_webgpu_render_pass_set_blend_constant",           "params": ["i64", "number", "number", "number", "number"],              "returns": "void" },

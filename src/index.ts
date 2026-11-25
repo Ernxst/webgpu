@@ -875,6 +875,13 @@ export declare function computePassDispatchWorkgroups(
   _z?: number
 ): void;
 
+/** `pass.dispatchWorkgroupsIndirect(indirectBuffer, indirectOffset)`. */
+export declare function computePassDispatchWorkgroupsIndirect(
+  _pass: GPUComputePassEncoder,
+  _indirectBuffer: GPUBuffer,
+  _indirectOffset: number
+): void;
+
 /** `pass.end()` — finalises the pass. */
 export declare function computePassEnd(_pass: GPUComputePassEncoder): void;
 
@@ -939,6 +946,20 @@ export declare function renderPassDrawIndexed(
   _firstIndex?: number,
   _baseVertex?: number,
   _firstInstance?: number
+): void;
+
+/** `pass.drawIndirect(indirectBuffer, indirectOffset)`. */
+export declare function renderPassDrawIndirect(
+  _pass: GPURenderPassEncoder,
+  _indirectBuffer: GPUBuffer,
+  _indirectOffset: number
+): void;
+
+/** `pass.drawIndexedIndirect(indirectBuffer, indirectOffset)`. */
+export declare function renderPassDrawIndexedIndirect(
+  _pass: GPURenderPassEncoder,
+  _indirectBuffer: GPUBuffer,
+  _indirectOffset: number
 ): void;
 
 /** `pass.setViewport(x, y, w, h, minDepth, maxDepth)`. */
