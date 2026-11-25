@@ -216,6 +216,8 @@ pub extern "C" fn js_webgpu_adapter_request_device(adapter_handle: Handle) -> *m
 
         match outcome {
             Some(Ok((device, queue))) => {
+                // wgpu panics on an error outside an error scope by default; a browser reports it and carries on.
+                device.on_uncaptured_error(Box::new(|error| eprintln!("[webgpu] uncaptured error: {error}")));
                 let dev_h = register_handle(WGPUDevice(device));
                 let q_h = register_handle(WGPUQueue {
                     queue,
