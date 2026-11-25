@@ -1359,13 +1359,11 @@ pub unsafe extern "C" fn js_webgpu_device_push_error_scope(
 pub extern "C" fn js_webgpu_device_pop_error_scope(device_handle: Handle) -> *mut Promise {
     let promise = JsPromise::new();
     let raw = promise.as_raw();
+    // Popped on the calling thread, so a scope pushed after this call can't be popped in its place.
+    let outcome: Option<Option<wgpu::Error>> = with_handle::<WGPUDevice, _, _>(device_handle, |d| {
+        pollster::block_on(d.0.pop_error_scope())
+    });
     spawn_blocking(move || {
-        let outcome: Option<Option<wgpu::Error>> = with_handle::<WGPUDevice, _, _>(
-            device_handle,
-            |d| {
-                tokio::runtime::Handle::current().block_on(async { d.0.pop_error_scope().await })
-            },
-        );
         match outcome {
             Some(Some(err)) => {
                 // Wrap the error into a `{type, message}` JSON blob —
