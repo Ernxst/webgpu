@@ -222,19 +222,7 @@ pub extern "C" fn js_webgpu_adapter_request_device(adapter_handle: Handle) -> *m
                     device_handle: dev_h,
                 });
                 // Pack as {device, queue}.
-                unsafe {
-                    let keys = ["device", "queue"];
-                    let (packed, shape) = perry_ffi::build_object_shape(&keys);
-                    let obj = perry_ffi::js_object_alloc_with_shape(
-                        shape,
-                        keys.len() as u32,
-                        packed.as_ptr(),
-                        packed.len() as u32,
-                    );
-                    perry_ffi::js_object_set_field(obj, 0, JsValue::from_number(dev_h as f64));
-                    perry_ffi::js_object_set_field(obj, 1, JsValue::from_number(q_h as f64));
-                    promise.resolve(JsValue::from_object_ptr(obj));
-                }
+                promise.resolve_with(move || perry_ffi::alloc_null_proto_object(&[("device", JsValue::from_number(dev_h as f64)), ("queue", JsValue::from_number(q_h as f64))]));
             }
             Some(Err(e)) => promise.reject_string(&format!("webgpu requestDevice: {}", e)),
             None => promise.reject_string("webgpu requestDevice: invalid adapter handle"),
