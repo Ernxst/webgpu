@@ -1247,13 +1247,13 @@ pub unsafe extern "C" fn js_webgpu_queue_write_buffer(
     buffer_offset: f64,
     data_ptr: *const BufferHeader,
 ) {
-    let Some(bytes) = perry_ffi::read_buffer_bytes(data_ptr) else {
+    let Some(bytes) = perry_ffi::bytes::no_gc(|s| perry_ffi::read_buffer_bytes(data_ptr, s).map(<[u8]>::to_vec)) else {
         return;
     };
     let _ = with_handle::<WGPUQueue, _, _>(queue_handle, |q| {
         let _ = with_handle::<WGPUBuffer, _, _>(buffer_handle, |b| {
             q.queue
-                .write_buffer(&b.0, buffer_offset.max(0.0) as u64, bytes);
+                .write_buffer(&b.0, buffer_offset.max(0.0) as u64, &bytes);
         });
     });
 }
@@ -2989,7 +2989,7 @@ pub unsafe extern "C" fn js_webgpu_queue_write_texture(
         Ok(c) => c,
         Err(_) => return,
     };
-    let Some(bytes) = perry_ffi::read_buffer_bytes(data_ptr) else {
+    let Some(bytes) = perry_ffi::bytes::no_gc(|s| perry_ffi::read_buffer_bytes(data_ptr, s).map(<[u8]>::to_vec)) else {
         return;
     };
 
@@ -3007,7 +3007,7 @@ pub unsafe extern "C" fn js_webgpu_queue_write_texture(
                     },
                     aspect: parse_texture_aspect(call.destination.aspect.as_deref()),
                 },
-                bytes,
+                &bytes,
                 wgpu::ImageDataLayout {
                     offset: call.data_layout.offset,
                     bytes_per_row: if call.data_layout.bytes_per_row == 0 {
