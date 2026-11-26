@@ -413,7 +413,7 @@ pub extern "C" fn js_webgpu_buffer_get_mapped_range(
     buffer_handle: Handle,
     offset: f64,
     size: f64,
-) -> JsValue {
+) -> f64 {
     let off = offset.max(0.0) as u64;
     let sz = size.max(0.0) as u64;
 
@@ -432,10 +432,8 @@ pub extern "C" fn js_webgpu_buffer_get_mapped_range(
         }
     });
 
-    match bytes {
-        Some(v) => alloc_buffer_value(&v),
-        None => alloc_buffer_value(&[]),
-    }
+    // Perry reads a native return from the float register, so the value's bits travel as an f64.
+    f64::from_bits(alloc_buffer_value(&bytes.unwrap_or_default()).bits())
 }
 
 /// `buffer.unmap()` — releases the host mapping. After this the host
