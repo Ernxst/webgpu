@@ -69,7 +69,7 @@ use wgpu::{
 
 fn instance() -> &'static Instance {
     static INSTANCE: OnceLock<Instance> = OnceLock::new();
-    INSTANCE.get_or_init(|| Instance::new(wgpu::InstanceDescriptor::default()))
+    INSTANCE.get_or_init(|| Instance::new(wgpu::InstanceDescriptor::new_without_display_handle()))
 }
 
 unsafe fn read_str(ptr: *const StringHeader) -> Option<String> {
@@ -103,7 +103,7 @@ fn reject_json_err(promise: JsPromise, prefix: &str, e: serde_json::Error) {
 // own GPU resources and drops them when the wrapper drops.
 
 pub struct WGPUAdapter(pub Adapter);
-pub struct WGPUDevice(pub Device);
+pub struct WGPUDevice(pub Device, pub Queue);
 /// The queue carries its parent device's handle so
 /// `queueOnSubmittedWorkDone` can poll the right device — the spec
 /// semantics ("resolve when all submitted work has finished") need a
@@ -168,16 +168,19 @@ pub extern "C" fn js_webgpu_request_adapter(surface_handle: Handle) -> *mut Prom
                 power_preference: wgpu::PowerPreference::HighPerformance,
                 force_fallback_adapter: false,
                 compatible_surface: None,
+                apply_limit_buckets: false,
             }))
+            .ok()
         } else {
             with_handle::<WGPUSurface, _, _>(surface_handle, |s| {
                 pollster::block_on(instance().request_adapter(&wgpu::RequestAdapterOptions {
                     power_preference: wgpu::PowerPreference::HighPerformance,
                     force_fallback_adapter: false,
                     compatible_surface: Some(&s.surface),
+                    apply_limit_buckets: false,
                 }))
             })
-            .flatten()
+            .and_then(Result::ok)
         };
         match adapter {
             Some(a) => {
@@ -206,20 +209,20 @@ pub extern "C" fn js_webgpu_adapter_request_device(adapter_handle: Handle) -> *m
             pollster::block_on(a.0.request_device(
                 &wgpu::DeviceDescriptor {
                     label: Some("perry-webgpu-device"),
-                    // Without it wgpu rejects read-only and read-write storage textures, which WebGPU allows.
-                    required_features: a.0.features() & wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
+                    required_features: wgpu::Features::empty(),
                     required_limits: wgpu::Limits::default(),
+                    experimental_features: wgpu::ExperimentalFeatures::default(),
                     memory_hints: wgpu::MemoryHints::default(),
+                    trace: wgpu::Trace::Off,
                 },
-                None,
             ))
         });
 
         match outcome {
             Some(Ok((device, queue))) => {
                 // wgpu panics on an error outside an error scope by default; a browser reports it and carries on.
-                device.on_uncaptured_error(Box::new(|error| eprintln!("[webgpu] uncaptured error: {error}")));
-                let dev_h = register_handle(WGPUDevice(device));
+                device.on_uncaptured_error(std::sync::Arc::new(|error| eprintln!("[webgpu] uncaptured error: {error}")));
+                let dev_h = register_handle(WGPUDevice(device, queue.clone()));
                 let q_h = register_handle(WGPUQueue {
                     queue,
                     device_handle: dev_h,
@@ -249,6 +252,7 @@ pub extern "C" fn js_webgpu_adapter_drop(adapter_handle: Handle) {
 /// `GPUDevice.destroy()` from the spec. Idempotent.
 #[no_mangle]
 pub extern "C" fn js_webgpu_device_destroy(device_handle: Handle) {
+    ERROR_SCOPES.with_borrow_mut(|scopes| scopes.remove(&device_handle));
     let _ = take_handle::<WGPUDevice>(device_handle);
     drop_handle(device_handle);
 }
@@ -419,7 +423,13 @@ pub extern "C" fn js_webgpu_buffer_get_mapped_range(
         } else {
             b.0.slice(off..off + sz)
         };
-        slice.get_mapped_range().to_vec()
+        match slice.get_mapped_range() {
+            Ok(view) => view.to_vec(),
+            Err(error) => {
+                eprintln!("webgpu getMappedRange: {error}");
+                Vec::new()
+            }
+        }
     });
 
     match bytes {
@@ -746,11 +756,11 @@ pub unsafe extern "C" fn js_webgpu_device_create_pipeline_layout(
     }
 
     with_handle::<WGPUDevice, _, _>(device_handle, |d| {
-        let layouts: Vec<&BindGroupLayout> = layout_ptrs.iter().map(|p| &**p).collect();
+        let layouts: Vec<Option<&BindGroupLayout>> = layout_ptrs.iter().map(|p| Some(&**p)).collect();
         let pl = d.0.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: desc.label.as_deref(),
             bind_group_layouts: &layouts,
-            push_constant_ranges: &[],
+            immediate_size: 0,
         });
         WGPUPipelineLayout(pl)
     })
@@ -998,11 +1008,8 @@ pub unsafe extern "C" fn js_webgpu_device_create_compute_pipeline(
         None => return 0,
     };
 
-    // wgpu 22 requires a non-optional `entry_point: &str`; the spec
-    // permits omission, but wgpu picks the unique entry by name when
-    // the shader has exactly one. Default to `"main"` (the canonical
-    // WGSL entry name) to mirror that behaviour.
-    let entry_point = desc.compute.entry_point.as_deref().unwrap_or("main");
+    // An omitted entry point is `None`, and wgpu then picks the module's only compute entry point, as WebGPU does.
+    let entry_point = desc.compute.entry_point.as_deref();
 
     with_handle::<WGPUDevice, _, _>(device_handle, |d| {
         let pipeline = d.0.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
@@ -1306,7 +1313,7 @@ pub extern "C" fn js_webgpu_queue_on_submitted_work_done(queue_handle: Handle) -
                 break;
             }
             let _ = with_handle::<WGPUDevice, _, _>(device_handle, |d| {
-                d.0.poll(wgpu::Maintain::Poll);
+                let _ = d.0.poll(wgpu::PollType::Poll);
             });
             spins += 1;
             if spins > 10_000 {
@@ -1330,7 +1337,7 @@ pub extern "C" fn js_webgpu_queue_on_submitted_work_done(queue_handle: Handle) -
 #[no_mangle]
 pub extern "C" fn js_webgpu_device_poll(device_handle: Handle) {
     let _ = with_handle::<WGPUDevice, _, _>(device_handle, |d| {
-        d.0.poll(wgpu::Maintain::Wait);
+        let _ = d.0.poll(wgpu::PollType::wait_indefinitely());
     });
 }
 
@@ -1361,9 +1368,19 @@ pub unsafe extern "C" fn js_webgpu_device_push_error_scope(
     filter_ptr: *const StringHeader,
 ) {
     let filter = read_str(filter_ptr).unwrap_or_else(|| "validation".to_string());
-    let _ = with_handle::<WGPUDevice, _, _>(device_handle, |d| {
-        d.0.push_error_scope(parse_error_filter(&filter));
-    });
+    let Some(guard) = with_handle::<WGPUDevice, _, _>(device_handle, |d| {
+        d.0.push_error_scope(parse_error_filter(&filter))
+    }) else {
+        return;
+    };
+    ERROR_SCOPES.with_borrow_mut(|scopes| scopes.entry(device_handle).or_default().push(guard));
+}
+
+thread_local! {
+    /// Each device's open error scopes, innermost last. wgpu keeps a scope stack per thread and its guards can't
+    /// leave the thread that pushed them, so they live here until `popErrorScope` on the same thread.
+    static ERROR_SCOPES: std::cell::RefCell<std::collections::HashMap<Handle, Vec<wgpu::ErrorScopeGuard>>> =
+        std::cell::RefCell::default();
 }
 
 /// `device.popErrorScope() -> Promise<GPUError | null>` — resolves
@@ -1371,17 +1388,15 @@ pub unsafe extern "C" fn js_webgpu_device_push_error_scope(
 /// error, or the empty string when the scope captured nothing (which
 /// the call site can map to `null`, matching the spec).
 ///
-/// `wgpu::Device::pop_error_scope()` returns a future; we bridge it
-/// through `spawn_blocking` + `block_on` like every other async path
-/// in this crate.
+/// Rejects when the device has no open scope, as the spec's
+/// `OperationError` does.
 #[no_mangle]
 pub extern "C" fn js_webgpu_device_pop_error_scope(device_handle: Handle) -> *mut Promise {
     let promise = JsPromise::new();
     let raw = promise.as_raw();
-    // Popped on the calling thread, so a scope pushed after this call can't be popped in its place.
-    let outcome: Option<Option<wgpu::Error>> = with_handle::<WGPUDevice, _, _>(device_handle, |d| {
-        pollster::block_on(d.0.pop_error_scope())
-    });
+    // Popped on the calling thread, which pushed it, so a scope pushed after this call can't be popped in its place.
+    let guard = ERROR_SCOPES.with_borrow_mut(|scopes| scopes.get_mut(&device_handle).and_then(Vec::pop));
+    let outcome: Option<Option<wgpu::Error>> = guard.map(|guard| pollster::block_on(guard.pop()));
     spawn_blocking(move || {
         match outcome {
             Some(Some(err)) => {
@@ -1402,7 +1417,7 @@ pub extern "C" fn js_webgpu_device_pop_error_scope(device_handle: Handle) -> *mu
                 promise.resolve(alloc_str_value(&json));
             }
             Some(None) => promise.resolve(alloc_str_value("")),
-            None => promise.reject_string("webgpu popErrorScope: invalid device handle"),
+            None => promise.reject_string("webgpu popErrorScope: no error scope is open"),
         }
     });
     raw
@@ -1510,6 +1525,8 @@ struct TextureViewDescriptor {
     base_array_layer: u32,
     #[serde(rename = "arrayLayerCount", default)]
     array_layer_count: u32,
+    #[serde(default)]
+    usage: Option<u32>,
 }
 
 fn parse_texture_aspect(s: Option<&str>) -> wgpu::TextureAspect {
@@ -1559,6 +1576,7 @@ pub unsafe extern "C" fn js_webgpu_texture_create_view(
             } else {
                 Some(parsed.array_layer_count)
             },
+            usage: parsed.usage.map(wgpu::TextureUsages::from_bits_truncate),
         })
     };
 
@@ -1674,7 +1692,10 @@ pub unsafe extern "C" fn js_webgpu_device_create_sampler(
             address_mode_w: parse_address_mode(desc.address_mode_w.as_deref()),
             mag_filter: parse_filter_mode(desc.mag_filter.as_deref()),
             min_filter: parse_filter_mode(desc.min_filter.as_deref()),
-            mipmap_filter: parse_filter_mode(desc.mipmap_filter.as_deref()),
+            mipmap_filter: match desc.mipmap_filter.as_deref() {
+                Some("linear") => wgpu::MipmapFilterMode::Linear,
+                _ => wgpu::MipmapFilterMode::Nearest,
+            },
             lod_min_clamp: desc.lod_min_clamp,
             lod_max_clamp: desc.lod_max_clamp,
             compare: desc.compare.as_deref().map(parse_compare_function),
@@ -2001,23 +2022,21 @@ unsafe fn build_render_pipeline(
                 .collect()
         })
         .collect();
-    let vertex_buffers: Vec<wgpu::VertexBufferLayout> = desc
+    let vertex_buffers: Vec<Option<wgpu::VertexBufferLayout>> = desc
         .vertex
         .buffers
         .iter()
         .enumerate()
-        .map(|(i, b)| wgpu::VertexBufferLayout {
-            array_stride: b.array_stride,
-            step_mode: parse_step_mode(b.step_mode.as_deref()),
-            attributes: &attrs_per_buffer[i],
+        .map(|(i, b)| {
+            Some(wgpu::VertexBufferLayout {
+                array_stride: b.array_stride,
+                step_mode: parse_step_mode(b.step_mode.as_deref()),
+                attributes: &attrs_per_buffer[i],
+            })
         })
         .collect();
 
-    let vertex_entry = desc
-        .vertex
-        .entry_point
-        .as_deref()
-        .unwrap_or("vs_main");
+    let vertex_entry = desc.vertex.entry_point.as_deref();
 
     let primitive = wgpu::PrimitiveState {
         topology: parse_topology(desc.primitive.topology.as_deref()),
@@ -2035,12 +2054,13 @@ unsafe fn build_render_pipeline(
 
     let depth_stencil = desc.depth_stencil.as_ref().map(|ds| wgpu::DepthStencilState {
         format: parse_texture_format(&ds.format),
-        depth_write_enabled: ds.depth_write_enabled,
-        depth_compare: ds
-            .depth_compare
-            .as_deref()
-            .map(parse_compare_function)
-            .unwrap_or(wgpu::CompareFunction::Always),
+        depth_write_enabled: Some(ds.depth_write_enabled),
+        depth_compare: Some(
+            ds.depth_compare
+                .as_deref()
+                .map(parse_compare_function)
+                .unwrap_or(wgpu::CompareFunction::Always),
+        ),
         stencil: wgpu::StencilState {
             front: parse_stencil_face(&ds.stencil_front),
             back: parse_stencil_face(&ds.stencil_back),
@@ -2083,8 +2103,7 @@ unsafe fn build_render_pipeline(
     let fragment_entry = desc
         .fragment
         .as_ref()
-        .and_then(|f| f.entry_point.as_deref())
-        .unwrap_or("fs_main");
+        .and_then(|f| f.entry_point.as_deref());
 
     let fragment_state =
         if let (Some(fmp), Some(_)) = (fragment_module_ptr, desc.fragment.as_ref()) {
@@ -2111,7 +2130,7 @@ unsafe fn build_render_pipeline(
         depth_stencil,
         multisample,
         fragment: fragment_state,
-        multiview: None,
+        multiview_mask: None,
         cache: None,
     })
 }
@@ -2311,7 +2330,7 @@ pub unsafe extern "C" fn js_webgpu_device_create_compute_pipeline_async(
                 return;
             }
         };
-        let entry_point = desc.compute.entry_point.as_deref().unwrap_or("main");
+        let entry_point = desc.compute.entry_point.as_deref();
 
         let outcome = with_handle::<WGPUDevice, _, _>(device_handle, |d| {
             let pipeline = d.0.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
@@ -2354,6 +2373,8 @@ struct RenderPassColorAttachmentDesc {
     /// Spec wire shape: `{r,g,b,a}` (numbers in 0..=1 for unorm formats).
     #[serde(rename = "clearValue", default)]
     clear_value: Option<ColorClearValue>,
+    #[serde(rename = "depthSlice", default)]
+    depth_slice: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -2518,6 +2539,7 @@ pub unsafe extern "C" fn js_webgpu_command_encoder_begin_render_pass(
                 (Some(att), Some((view_ptr, resolve_ptr))) => {
                     Some(wgpu::RenderPassColorAttachment {
                         view: unsafe { &**view_ptr },
+                        depth_slice: att.depth_slice,
                         resolve_target: resolve_ptr.map(|p| unsafe { &*p }),
                         ops: wgpu::Operations {
                             load: parse_load_op_color(
@@ -2571,6 +2593,7 @@ pub unsafe extern "C" fn js_webgpu_command_encoder_begin_render_pass(
                 depth_stencil_attachment: depth_stencil,
                 timestamp_writes: None,
                 occlusion_query_set: occlusion_qs_ptr.map(|p| unsafe { &*p }),
+                multiview_mask: None,
             })
             .forget_lifetime();
         Some(WGPURenderPass(Mutex::new(Some(pass))))
@@ -3042,7 +3065,7 @@ pub unsafe extern "C" fn js_webgpu_queue_write_texture(
         let _ = with_handle::<WGPUTexture, _, _>(call.destination.texture, |t| {
             let origin = call.destination.origin.unwrap_or_default();
             q.queue.write_texture(
-                wgpu::ImageCopyTexture {
+                wgpu::TexelCopyTextureInfo {
                     texture: &t.0,
                     mip_level: call.destination.mip_level,
                     origin: wgpu::Origin3d {
@@ -3053,7 +3076,7 @@ pub unsafe extern "C" fn js_webgpu_queue_write_texture(
                     aspect: parse_texture_aspect(call.destination.aspect.as_deref()),
                 },
                 &bytes,
-                wgpu::ImageDataLayout {
+                wgpu::TexelCopyBufferLayout {
                     offset: call.data_layout.offset,
                     bytes_per_row: if call.data_layout.bytes_per_row == 0 {
                         None
@@ -3122,9 +3145,9 @@ pub unsafe extern "C" fn js_webgpu_command_encoder_copy_buffer_to_texture(
             let _ = with_handle::<WGPUTexture, _, _>(call.destination.texture, |dt| {
                 let dorigin = call.destination.origin.clone().unwrap_or_default();
                 encoder.copy_buffer_to_texture(
-                    wgpu::ImageCopyBuffer {
+                    wgpu::TexelCopyBufferInfo {
                         buffer: &sb.0,
-                        layout: wgpu::ImageDataLayout {
+                        layout: wgpu::TexelCopyBufferLayout {
                             offset: call.source.offset,
                             bytes_per_row: if call.source.bytes_per_row == 0 {
                                 None
@@ -3138,7 +3161,7 @@ pub unsafe extern "C" fn js_webgpu_command_encoder_copy_buffer_to_texture(
                             },
                         },
                     },
-                    wgpu::ImageCopyTexture {
+                    wgpu::TexelCopyTextureInfo {
                         texture: &dt.0,
                         mip_level: call.destination.mip_level,
                         origin: wgpu::Origin3d {
@@ -3184,7 +3207,7 @@ pub unsafe extern "C" fn js_webgpu_command_encoder_copy_texture_to_buffer(
             let _ = with_handle::<WGPUBuffer, _, _>(call.destination.buffer, |db| {
                 let sorigin = call.source.origin.clone().unwrap_or_default();
                 encoder.copy_texture_to_buffer(
-                    wgpu::ImageCopyTexture {
+                    wgpu::TexelCopyTextureInfo {
                         texture: &st.0,
                         mip_level: call.source.mip_level,
                         origin: wgpu::Origin3d {
@@ -3194,9 +3217,9 @@ pub unsafe extern "C" fn js_webgpu_command_encoder_copy_texture_to_buffer(
                         },
                         aspect: parse_texture_aspect(call.source.aspect.as_deref()),
                     },
-                    wgpu::ImageCopyBuffer {
+                    wgpu::TexelCopyBufferInfo {
                         buffer: &db.0,
-                        layout: wgpu::ImageDataLayout {
+                        layout: wgpu::TexelCopyBufferLayout {
                             offset: call.destination.offset,
                             bytes_per_row: if call.destination.bytes_per_row == 0 {
                                 None
@@ -3247,7 +3270,7 @@ pub unsafe extern "C" fn js_webgpu_command_encoder_copy_texture_to_texture(
                 let sorigin = call.source.origin.clone().unwrap_or_default();
                 let dorigin = call.destination.origin.clone().unwrap_or_default();
                 encoder.copy_texture_to_texture(
-                    wgpu::ImageCopyTexture {
+                    wgpu::TexelCopyTextureInfo {
                         texture: &st.0,
                         mip_level: call.source.mip_level,
                         origin: wgpu::Origin3d {
@@ -3257,7 +3280,7 @@ pub unsafe extern "C" fn js_webgpu_command_encoder_copy_texture_to_texture(
                         },
                         aspect: parse_texture_aspect(call.source.aspect.as_deref()),
                     },
-                    wgpu::ImageCopyTexture {
+                    wgpu::TexelCopyTextureInfo {
                         texture: &dt.0,
                         mip_level: call.destination.mip_level,
                         origin: wgpu::Origin3d {
@@ -3337,6 +3360,8 @@ pub struct WGPUSurface {
     /// new acquire / a present can free the previous one and per-frame
     /// handles don't accumulate.
     issued_tex: Mutex<Handle>,
+    /// Queue of the device the surface was last configured with, which presents its frames.
+    present_queue: Mutex<Option<Queue>>,
     /// Device handle captured by `surfaceConfigure` (0 = unconfigured),
     /// so the swapchain can be re-`configure`d without JS involvement
     /// when the backing window is reparented (see `configured_root`).
@@ -3442,7 +3467,7 @@ pub unsafe extern "C" fn js_webgpu_request_surface(descriptor_ptr: *const String
     // outlives the surface because the wrapper holds a +1 ref (released
     // in `surfaceDrop`).
     let target = wgpu::SurfaceTargetUnsafe::RawHandle {
-        raw_display_handle: view.display_handle,
+        raw_display_handle: Some(view.display_handle),
         raw_window_handle: view.window_handle,
     };
     match instance().create_surface_unsafe(target) {
@@ -3453,6 +3478,7 @@ pub unsafe extern "C" fn js_webgpu_request_surface(descriptor_ptr: *const String
             config: Mutex::new(None),
             current: Mutex::new(None),
             issued_tex: Mutex::new(0),
+            present_queue: Mutex::new(None),
             #[cfg(target_os = "windows")]
             configured_device: Mutex::new(0),
             #[cfg(target_os = "windows")]
@@ -3485,7 +3511,7 @@ pub extern "C" fn js_webgpu_surface_from_native_view(view_ptr: i64) -> Handle {
         return 0;
     };
     let target = wgpu::SurfaceTargetUnsafe::RawHandle {
-        raw_display_handle: display_handle,
+        raw_display_handle: Some(display_handle),
         raw_window_handle: window_handle,
     };
     // SAFETY: caller guarantees `view_ptr` references a live GPU-capable
@@ -3498,6 +3524,7 @@ pub extern "C" fn js_webgpu_surface_from_native_view(view_ptr: i64) -> Handle {
             config: Mutex::new(None),
             current: Mutex::new(None),
             issued_tex: Mutex::new(0),
+            present_queue: Mutex::new(None),
             #[cfg(target_os = "windows")]
             configured_device: Mutex::new(0),
             #[cfg(target_os = "windows")]
@@ -3595,11 +3622,13 @@ pub unsafe extern "C" fn js_webgpu_surface_configure(
             .map(|s| parse_texture_format(s))
             .collect(),
         desired_maximum_frame_latency: 2,
+        color_space: wgpu::SurfaceColorSpace::Auto,
     };
 
     let _ = with_handle::<WGPUSurface, _, _>(surface_handle, |s| {
         let applied = with_handle::<WGPUDevice, _, _>(cfg.device, |d| {
             s.surface.configure(&d.0, &config);
+            *s.present_queue.lock() = Some(d.1.clone());
         })
         .is_some();
         if applied {
@@ -3664,7 +3693,7 @@ fn rebind_surface_if_reparented(surface_handle: Handle) {
         return;
     };
     let target = wgpu::SurfaceTargetUnsafe::RawHandle {
-        raw_display_handle: display_handle,
+        raw_display_handle: Some(display_handle),
         raw_window_handle: window_handle,
     };
     // SAFETY: `view_ptr` referenced a live view when the surface was
@@ -3741,12 +3770,14 @@ pub extern "C" fn js_webgpu_surface_get_current_texture(surface_handle: Handle) 
 
     let acquired = with_handle::<WGPUSurface, _, _>(surface_handle, |s| {
         match s.surface.get_current_texture() {
-            Ok(st) => {
+            wgpu::CurrentSurfaceTexture::Success(st) | wgpu::CurrentSurfaceTexture::Suboptimal(st) => {
                 *s.current.lock() = Some(st);
                 true
             }
-            Err(e) => {
-                eprintln!("webgpu surfaceGetCurrentTexture: {e}");
+            // A hidden window or a slow compositor skips the frame; the next one tries again.
+            wgpu::CurrentSurfaceTexture::Occluded | wgpu::CurrentSurfaceTexture::Timeout => false,
+            other => {
+                eprintln!("webgpu surfaceGetCurrentTexture: {other:?}");
                 false
             }
         }
@@ -3777,8 +3808,8 @@ pub extern "C" fn js_webgpu_surface_get_current_texture(surface_handle: Handle) 
 #[no_mangle]
 pub extern "C" fn js_webgpu_surface_present(surface_handle: Handle) {
     let prev = with_handle::<WGPUSurface, _, _>(surface_handle, |s| {
-        if let Some(st) = s.current.lock().take() {
-            st.present();
+        if let (Some(st), Some(queue)) = (s.current.lock().take(), s.present_queue.lock().as_ref()) {
+            queue.present(st);
             #[cfg(target_os = "windows")]
             win32::diag("surfacePresent", s.view_ptr);
         }

@@ -21,7 +21,7 @@ perry-ffi = { git = "https://github.com/PerryTS/perry", branch = "main" }
 # wgpu is the native implementation of the WebGPU spec. We track
 # the latest stable release; it carries naga (the WGSL compiler)
 # transitively so we don't need to depend on it directly.
-wgpu = "22"
+wgpu = "30"
 
 # Async dispatch — every WebGPU async method (`requestAdapter`,
 # `requestDevice`, `createComputePipelineAsync`, `mapAsync`,
@@ -54,7 +54,7 @@ serde_json = "1"
 # On-screen surface (`GPUSurface` / `GPUCanvasContext`). We build a
 # native view per platform and hand its raw handle to wgpu's
 # `create_surface_unsafe`, so we depend on `raw-window-handle` directly
-# (the same 0.6 line wgpu 22 re-exports). The native view is then handed
+# (the same 0.6 line wgpu 30 re-exports). The native view is then handed
 # to perry-ui's `perry_ui_embed_*` hook by the caller — see the
 # "On-screen surface" section in lib.rs.
 raw-window-handle = "0.6"
